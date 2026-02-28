@@ -86,10 +86,14 @@ export default function RecurringPatternForm({ initial, initialRotation, onSave,
       if(rotationMembers.length < 2) return alert('Select at least 2 workers for rotation');
       // build payloads for each member, include ids when editing existing rotation
       const n = rotationMembers.length;
-      const payloads = rotationMembers.map((wId, idx) => ({ id: rotationIds[idx], workerId: Number(wId), weekdays, weekInterval: n, weekOffset: idx, startDate: limitRange ? (startDate||null) : null, endDate: limitRange ? (endDate||null) : null, note }));
+    const today = new Date().toISOString().slice(0,10);
+    const payloads = rotationMembers.map((wId, idx) => ({ id: rotationIds[idx], workerId: Number(wId), weekdays, weekInterval: n, weekOffset: idx, startDate: limitRange ? (startDate||today) : today, endDate: limitRange ? (endDate||null) : null, note }));
       const originalIds = initialRotation ? (initialRotation.map(p=>p.id)) : [];
       const out: any = { rotation: payloads, originalIds };
-      if(scheduleChange && scheduleDate) out.scheduleStartDate = scheduleDate;
+      if (scheduleChange) {
+        const today = new Date().toISOString().slice(0, 10);
+        out.scheduleStartDate = scheduleDate || today;
+      }
       onSave(out);
       return;
     }

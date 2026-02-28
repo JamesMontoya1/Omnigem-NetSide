@@ -24,20 +24,24 @@ export default function CalendarPage(){
   const [rotationGroup, setRotationGroup] = useState<any[] | null>(null);
   const [rotationOrder, setRotationOrder] = useState<Array<{id?:number; workerId:number}>>([]);
 
+  useEffect(()=>{}, []);
+
+  useEffect(()=>{}, [patterns]);
+
   useEffect(()=>{ loadDataForMonth(viewDate); loadWorkers(); loadPatterns(); loadHolidays(); }, [viewDate]);
 
   async function loadWorkers(){
-    try{ const res = await fetch(`${API_BASE}/workers`); const data = await res.json(); setWorkers(data||[]); }catch(e){ setWorkers([]); }
+    try{ const res = await fetch(`${API_BASE}/workers`, { cache: 'no-store' }); const data = await res.json(); setWorkers(data||[]); }catch(e){ setWorkers([]); }
   }
-  async function loadPatterns(){ try{ const res = await fetch(`${API_BASE}/recurring-patterns`); const data = await res.json(); setPatterns(data||[]); }catch(e){ setPatterns([]); } }
+  async function loadPatterns(){ try{ const res = await fetch(`${API_BASE}/recurring-patterns`, { cache: 'no-store' }); const data = await res.json(); setPatterns(data||[]); }catch(e){ setPatterns([]); } }
 
-  async function loadHolidays(){ try{ const res = await fetch(`${API_BASE}/holidays`); const data = await res.json(); setHolidays(data||[]); }catch(e){ setHolidays([]); } }
+  async function loadHolidays(){ try{ const res = await fetch(`${API_BASE}/holidays`, { cache: 'no-store' }); const data = await res.json(); setHolidays(data||[]); }catch(e){ setHolidays([]); } }
 
   async function loadDataForMonth(d: Date){
     const start = startOfMonth(d);
     const end = endOfMonth(d);
     try{
-      const res = await fetch(`${API_BASE}/assignments?startDate=${toISODate(start)}&endDate=${toISODate(end)}`);
+      const res = await fetch(`${API_BASE}/assignments?startDate=${toISODate(start)}&endDate=${toISODate(end)}`, { cache: 'no-store' });
       const data = await res.json(); setAssignments(data||[]);
     }catch(e){ setAssignments([]); }
   }
@@ -68,12 +72,18 @@ export default function CalendarPage(){
         const weekday = d.getUTCDay();
         if (!(p.weekdays || []).includes(weekday)) continue;
         const interval = p.weekInterval || 1;
-        if(interval > 1){
+        if (interval > 1) {
           const startAnchor = p.startDate ? new Date(p.startDate) : genStart;
-          const daysDiff = Math.floor((Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()) - Date.UTC(startAnchor.getUTCFullYear(), startAnchor.getUTCMonth(), startAnchor.getUTCDate())) / (24*60*60*1000));
-          const weeksSince = Math.floor(daysDiff / 7);
+          const toUTCDate = (dt: Date) => Date.UTC(dt.getUTCFullYear(), dt.getUTCMonth(), dt.getUTCDate());
+          const startWeekStart = new Date(startAnchor);
+          startWeekStart.setUTCDate(startWeekStart.getUTCDate() - startWeekStart.getUTCDay());
+          startWeekStart.setUTCHours(0,0,0,0);
+          const currentWeekStart = new Date(d);
+          currentWeekStart.setUTCDate(currentWeekStart.getUTCDate() - currentWeekStart.getUTCDay());
+          currentWeekStart.setUTCHours(0,0,0,0);
+          const weeksSince = Math.floor((toUTCDate(currentWeekStart) - toUTCDate(startWeekStart)) / (7*24*60*60*1000));
           const offset = (p.weekOffset || 0);
-          if(weeksSince % interval !== offset) continue;
+          if (((weeksSince % interval) + interval) % interval !== (offset % interval)) continue;
         }
         if (isHolidayDate(new Date(d))) continue;
         const key = toISODate(new Date(d));
@@ -109,6 +119,7 @@ export default function CalendarPage(){
   }
 
   function openEdit(d: Date){
+    
     const a = assignmentForDate(d);
     setEditingDate(toISODate(d));
     setSelectedWorker(a?.workerId ?? '');
@@ -117,10 +128,14 @@ export default function CalendarPage(){
     const weekday = d.getUTCDay();
     try{
       const group = (patterns || []).filter((p:any) => (p.weekdays||[]).includes(weekday) && (!p.startDate || new Date(p.startDate) <= d) && (!p.endDate || new Date(p.endDate) >= d) && (p.weekInterval && p.weekInterval > 1));
+      
       if(group.length >= 2){
         const sorted = [...group].sort((x:any,y:any)=> (x.weekOffset||0) - (y.weekOffset||0));
         setRotationGroup(sorted);
-        setRotationOrder(sorted.map(s => ({ id: s.id, workerId: s.workerId })));
+          setRotationOrder(sorted.map(s => ({ id: s.id, workerId: s.workerId })));
+          // diagnostic log: show rotation members in sorted order for debugging
+          try{
+          }catch(e){}
       } else {
         setRotationGroup(null);
         setRotationOrder([]);
@@ -130,6 +145,11 @@ export default function CalendarPage(){
 
   async function saveEdit(){
     if(!editingDate) return;
+    // validation: prevent scheduling a rotation change without defining rotation order
+    if(scheduleChange && (!rotationOrder || rotationOrder.length === 0)){
+      alert('Defina a ordem de rotação antes de marcar "Schedule change".');
+      return;
+    }
     const dateStr = editingDate;
     const old = assignments.find(a => a.date && a.date.slice(0,10) === dateStr);
     const oldWorker = old?.workerId ?? null;
@@ -168,40 +188,7 @@ export default function CalendarPage(){
             const dayBefore = (dstr:string)=>{ const d=new Date(dstr+'T00:00:00Z'); d.setUTCDate(d.getUTCDate()-1); return d.toISOString().slice(0,10); };
             const schedDate = new Date(sched+'T00:00:00Z');
 
-            // if there is a rotation group detected and user changed its order, apply scheduled rotation change
-            if(rotationOrder && rotationOrder.length >= 2){
-              const originalIds = rotationGroup ? rotationGroup.map(r=>r.id) : [];
-              // set endDate on originals to day before
-              for(const id of originalIds){ try{ await fetch(`${API_BASE}/recurring-patterns/${id}`, { method: 'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ endDate: dayBefore(sched) }) }); }catch(e){} }
-              // create new patterns with new order
-              const n = rotationOrder.length;
-              for(let i=0;i<n;i++){
-                const r = rotationOrder[i];
-                const body = { workerId: r.workerId, weekdays: [weekday], weekInterval: n, weekOffset: i, startDate: sched };
-                try{ await fetch(`${API_BASE}/recurring-patterns`, { method: 'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) }); }catch(e){}
-              }
-              // delete existing RECURRENT assignments in the range for that weekday, then regenerate assignments from sched
-              const regenEnd = addWeeks(schedDate, horizonWeeks);
-              try{
-                const resA = await fetch(`${API_BASE}/assignments?startDate=${toISODate(schedDate)}&endDate=${toISODate(regenEnd)}`);
-                if(resA.ok){
-                  const futureAssigns = await resA.json();
-                  for(const f of futureAssigns){
-                    const fd = new Date(f.date);
-                    if(fd.getUTCDay() === weekday && f.source === 'RECURRENT'){
-                      try{ await fetch(`${API_BASE}/assignments/${f.id}`, { method: 'DELETE' }); }catch(e){}
-                    }
-                  }
-                }
-              }catch(e){}
-              await fetch(`${API_BASE}/assignments/generate`, { method: 'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ startDate: toISODate(schedDate), endDate: toISODate(regenEnd) }) });
-              // refresh and close
-              await loadDataForMonth(new Date(dateStr+'T00:00:00Z'));
-              await loadPatterns();
-              await loadHolidays();
-              setEditingDate(null);
-              return;
-            }
+            
 
             // fallback to single-weekday scheduled swap (existing behavior)
             const pats = await (await fetch(`${API_BASE}/recurring-patterns`)).json();
@@ -238,6 +225,56 @@ export default function CalendarPage(){
     }
 
     // refresh
+    // if user requested a scheduled rotation change (independent of applyFuture), apply it here
+    if(scheduleChange && rotationOrder && rotationOrder.length >= 2){
+      const sched = dateStr;
+      const dayBefore = (dstr:string)=>{ const d=new Date(dstr+'T00:00:00Z'); d.setUTCDate(d.getUTCDate()-1); return d.toISOString().slice(0,10); };
+      const schedDate = new Date(sched+'T00:00:00Z');
+      const weekday = schedDate.getUTCDay();
+      const originalGroup = rotationGroup || [];
+      const weekdays = originalGroup.length ? (originalGroup[0].weekdays || [weekday]) : [weekday];
+      const interval = originalGroup.length ? (originalGroup[0].weekInterval || originalGroup.length) : rotationOrder.length;
+      const originalIds = originalGroup.map((r:any) => r.id).filter((id:any) => id != null);
+      
+
+      for(const id of originalIds){
+        try{ const resPut = await fetch(`${API_BASE}/recurring-patterns/${id}`, { method: 'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ endDate: dayBefore(sched) }) }); if(!resPut.ok){ const txt = await resPut.text(); console.error('PUT recurring-patterns failed', id, resPut.status, txt); } }catch(e){ console.error('PUT recurring-patterns exception', id, e); }
+      }
+
+      const n = rotationOrder.length;
+      // create new patterns so rotationOrder[0] applies on the week containing schedDate
+      for(let i=0;i<n;i++){
+        const r = rotationOrder[i];
+        const body = { workerId: r.workerId, weekdays: weekdays, weekInterval: interval, weekOffset: i, startDate: sched };
+        try{
+          const resPost = await fetch(`${API_BASE}/recurring-patterns`, { method: 'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+          if(!resPost.ok){ const txt = await resPost.text(); console.error('POST recurring-patterns failed', body, resPost.status, txt); }
+        }catch(e){ console.error('POST recurring-patterns exception', body, e); }
+      }
+
+      const regenEnd = addWeeks(schedDate, horizonWeeks);
+      try{
+        const resA = await fetch(`${API_BASE}/assignments?startDate=${toISODate(schedDate)}&endDate=${toISODate(regenEnd)}`);
+        if(resA.ok){
+          const futureAssigns = await resA.json();
+          for(const f of futureAssigns){
+            const fd = new Date(f.date);
+            if((weekdays || []).includes(fd.getUTCDay()) && f.source === 'RECURRENT'){
+              try{ const resDel = await fetch(`${API_BASE}/assignments/${f.id}`, { method: 'DELETE' }); if(!resDel.ok){ const txt = await resDel.text(); console.error('DELETE assignment failed', f.id, resDel.status, txt); } }catch(e){ console.error('DELETE assignment exception', f.id, e); }
+            }
+          }
+        } else { const txt = await resA.text(); console.error('GET assignments for regen failed', resA.status, txt); }
+      }catch(e){ console.error('GET assignments for regen exception', e); }
+
+      try{ const resGen = await fetch(`${API_BASE}/assignments/generate`, { method: 'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ startDate: toISODate(schedDate), endDate: toISODate(regenEnd) }) }); if(!resGen.ok){ const txt = await resGen.text(); console.error('POST assignments/generate failed', resGen.status, txt); } }catch(e){ console.error('POST assignments/generate exception', e); }
+
+      await loadDataForMonth(new Date(dateStr+'T00:00:00Z'));
+      await loadPatterns();
+      await loadHolidays();
+      setEditingDate(null);
+      return;
+    }
+
     await loadDataForMonth(new Date(dateStr+'T00:00:00Z'));
     await loadPatterns();
     await loadHolidays();
@@ -331,7 +368,7 @@ export default function CalendarPage(){
               </div>
             </div>
             <div style={{ marginTop:12, display:'flex', gap:8 }}>
-              <button onClick={saveEdit}>Save</button>
+              <button onClick={saveEdit} disabled={scheduleChange && (!rotationOrder || rotationOrder.length===0)}>Save</button>
               <button onClick={()=>setEditingDate(null)}>Cancel</button>
             </div>
           </div>

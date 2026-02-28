@@ -62,6 +62,25 @@ export class AssignmentsService {
         const weekday = d.getUTCDay();
         if (!p.weekdays.includes(weekday)) continue;
         if (isHoliday(d)) continue;
+        // respect weekInterval and weekOffset
+        const interval = p.weekInterval || 1;
+        if (interval > 1) {
+          const startAnchor = p.startDate ? new Date(p.startDate) : genStart;
+          // compute calendar-week-aligned weeks (week start = Sunday) so that dates
+          // in the same calendar week share the same week index. This avoids treating
+          // dates like Saturday and next Friday as the same week when they fall on
+          // different calendar weeks.
+          const toUTCDate = (dt: Date) => Date.UTC(dt.getUTCFullYear(), dt.getUTCMonth(), dt.getUTCDate());
+          const startWeekStart = new Date(startAnchor);
+          startWeekStart.setUTCDate(startWeekStart.getUTCDate() - startWeekStart.getUTCDay());
+          startWeekStart.setUTCHours(0,0,0,0);
+          const currentWeekStart = new Date(d);
+          currentWeekStart.setUTCDate(currentWeekStart.getUTCDate() - currentWeekStart.getUTCDay());
+          currentWeekStart.setUTCHours(0,0,0,0);
+          const weeksSince = Math.floor((toUTCDate(currentWeekStart) - toUTCDate(startWeekStart)) / (7*24*60*60*1000));
+          const offset = p.weekOffset || 0;
+          if (((weeksSince % interval) + interval) % interval !== (offset % interval)) continue;
+        }
 
         // check existing assignment
         const existing = await this.prisma.assignment.findUnique({ where: { date: new Date(d) as any } }).catch(()=>null);
