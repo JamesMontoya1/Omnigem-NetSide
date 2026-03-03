@@ -54,6 +54,7 @@ export class RotationsService {
     weekdays: number[];
     workerIds: number[];
     startDate: string;
+    notifyUpcoming?: boolean;
   }) {
     return this.prisma.rotation.create({
       data: {
@@ -61,6 +62,7 @@ export class RotationsService {
         weekdays: data.weekdays,
         workerIds: data.workerIds,
         startDate: toUTCMidnight(data.startDate),
+        notifyUpcoming: data.notifyUpcoming ?? false,
       },
     });
   }
@@ -72,6 +74,7 @@ export class RotationsService {
       weekdays: number[];
       workerIds: number[];
       startDate: string;
+      notifyUpcoming: boolean;
     }>,
   ) {
     const payload: any = {};
@@ -80,6 +83,8 @@ export class RotationsService {
     if (data.workerIds !== undefined) payload.workerIds = data.workerIds;
     if (data.startDate !== undefined)
       payload.startDate = toUTCMidnight(data.startDate);
+    if (data.notifyUpcoming !== undefined)
+      payload.notifyUpcoming = data.notifyUpcoming;
     return this.prisma.rotation.update({ where: { id }, data: payload });
   }
 
@@ -127,6 +132,7 @@ export class RotationsService {
       rotationId?: number;
       rotationName?: string;
       note?: string;
+      notifyUpcoming?: boolean;
     };
     type DayData = {
       entries: EntryItem[];
@@ -195,6 +201,7 @@ export class RotationsService {
             source: 'ROTATION',
             rotationId: chosen.id,
             rotationName: chosen.name ?? undefined,
+            notifyUpcoming: (chosen as any).notifyUpcoming ?? false,
           });
         }
       }

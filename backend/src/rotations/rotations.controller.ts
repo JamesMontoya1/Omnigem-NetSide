@@ -16,6 +16,7 @@ class CreateRotationDto {
   weekdays: number[];
   workerIds: number[];
   startDate: string;
+  notifyUpcoming?: boolean;
 }
 
 class UpdateRotationDto {
@@ -23,6 +24,7 @@ class UpdateRotationDto {
   weekdays?: number[];
   workerIds?: number[];
   startDate?: string;
+  notifyUpcoming?: boolean;
 }
 
 @Controller('rotations')

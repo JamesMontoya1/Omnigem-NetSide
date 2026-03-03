@@ -79,10 +79,11 @@ enum AssignmentSource {
 // Rodízio simplificado: lista ordenada de trabalhadores + dias da semana.
 // A cada semana, o próximo trabalhador da lista é responsável pelos dias configurados.
 model Rotation {
-  id          Int      @id @default(autoincrement())
-  name        String?
-  weekdays    Int[]    // 0=domingo .. 6=sábado
-  workerIds   Int[]    // IDs dos trabalhadores na ordem do rodízio
-  startDate   DateTime // data de início (usada como âncora para calcular a semana)
-  createdAt   DateTime @default(now())
+  id              Int      @id @default(autoincrement())
+  name            String?
+  weekdays        Int[]    // 0=domingo .. 6=sábado
+  workerIds       Int[]    // IDs dos trabalhadores na ordem do rodízio
+  startDate       DateTime // data de início (usada como âncora para calcular a semana)
+  notifyUpcoming  Boolean  @default(false) // destaca células em vermelho quando faltam ≤7 dias
+  createdAt       DateTime @default(now())
 }

@@ -9,7 +9,7 @@ const PALETTE = {
   backgroundSecondary: '#20242A', // background secundário
   cardBg: '#2A2F36', // cards / containers
   hoverBg: '#323844', // hover / surfaces
-  border: '#3A4250',
+  border: '#3A4250', // bordas e divisórias
 
   // texto
   textPrimary: '#E6EAF0',
@@ -40,9 +40,9 @@ const WEEKDAY_LABELS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 
 /* ── tipos ── */
 type Worker = { id: number; name: string };
-type Rotation = { id: number; name: string | null; weekdays: number[]; workerIds: number[]; startDate: string };
+type Rotation = { id: number; name: string | null; weekdays: number[]; workerIds: number[]; startDate: string; notifyUpcoming?: boolean };
 type Holiday = { id: number; name: string | null; recurring: boolean };
-type CalendarEntryItem = { workerId: number | null; workerName: string | null; workerColor?: string | null; source: string; rotationId?: number; rotationName?: string; note?: string };
+type CalendarEntryItem = { workerId: number | null; workerName: string | null; workerColor?: string | null; source: string; rotationId?: number; rotationName?: string; note?: string; notifyUpcoming?: boolean };
 type DayData = { entries: CalendarEntryItem[]; holiday?: Holiday };
 
 export default function CalendarPage() {
@@ -103,6 +103,7 @@ export default function CalendarPage() {
   /* ── grade mensal ── */
   function matrixForMonth(d: Date) {
     const start = startOfMonth(d);
+    const currentMonth = d.getUTCMonth();
     const firstWeekday = start.getUTCDay();
     const rows: (Date | null)[][] = [];
     let cur = addDays(start, -firstWeekday);
@@ -110,6 +111,10 @@ export default function CalendarPage() {
       const row: (Date | null)[] = [];
       for (let c = 0; c < 7; c++) { row.push(new Date(cur)); cur = addDays(cur, 1); }
       rows.push(row);
+    }
+    // Remove linhas finais que não possuem nenhum dia do mês atual
+    while (rows.length > 0 && rows[rows.length - 1].every(day => day && day.getUTCMonth() !== currentMonth)) {
+      rows.pop();
     }
     return rows;
   }
@@ -207,7 +212,7 @@ export default function CalendarPage() {
       {/* Navegação de mês */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8, flexShrink: 0 }}>
         <button onClick={prevMonth} style={btnNav}>◀ Anterior</button>
-        <strong style={{ fontSize: 18, color: PALETTE.textPrimary }}>
+        <strong style={{ fontSize: 18, width: '160px', color: PALETTE.textPrimary }}>
           {viewDate.toLocaleString('pt-BR', { month: 'long', year: 'numeric', timeZone: 'UTC' })}
         </strong>
 
@@ -248,7 +253,7 @@ export default function CalendarPage() {
 
       {/* Grade do calendário */}
       <div style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
-      <table style={{ width: '100%', height: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
+      <table style={{ width: '100%', height: '90%', borderCollapse: 'separate', borderSpacing: 1, tableLayout: 'fixed' }}>
         <thead>
           <tr>
             {WEEKDAY_LABELS.map(d => (
@@ -271,6 +276,16 @@ export default function CalendarPage() {
                 const isCurrentMonth = cell.getUTCMonth() === viewDate.getUTCMonth();
                 const isToday = iso === toISO(new Date());
 
+                // Verifica se algum entry do rodízio com notifyUpcoming está a ≤7 dias de hoje
+                const todayDate = new Date();
+                const cellDate = new Date(cell);
+                const diffMs = cellDate.getTime() - todayDate.getTime();
+                const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+                const isUpcomingSoon = entries.some(e => e.source === 'ROTATION' && e.notifyUpcoming) && diffDays >= 0 && diffDays <= 7 && !isToday;
+                const isHoliday = !!holiday;
+                const hasHighlight = isToday || isUpcomingSoon || isHoliday;
+                const headerBg = isToday ? PALETTE.success : isUpcomingSoon ? PALETTE.error : isHoliday ? PALETTE.warning : 'transparent';
+
                 return (
                   <td key={ci} style={{
                         ...cellStyle,
@@ -284,17 +299,31 @@ export default function CalendarPage() {
                     }}
                   >
                       <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
-                        <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                        <div style={{ position: 'relative', display: 'flex', alignItems: 'center', padding: hasHighlight ? '6px 8px' : undefined, background: headerBg, borderTopLeftRadius: hasHighlight ? 6 : undefined, borderTopRightRadius: hasHighlight ? 6 : undefined, color: hasHighlight ? '#fff' : undefined }}>
                           {holiday && (
-                            <span title={holiday.name ?? 'Feriado'} style={{ position: 'absolute', left: 2, top: '50%', transform: 'translateY(-50%)', fontSize: 10, color: PALETTE.warning }}>★</span>
+                            <span title={holiday.name ?? 'Feriado'} style={{ position: 'absolute', left: 2, top: '50%', transform: 'translateY(-50%)', fontSize: 10, color: '#FFF' }}>★</span>
                           )}
-                          <span style={{ display: 'block', margin: '0 auto', fontSize: 20, fontWeight: 600, color: isCurrentMonth ? PALETTE.textPrimary : PALETTE.textDisabled }}>
+                          <span style={{ display: 'block', margin: '0 auto', fontSize: isToday ? 16 : 20, fontWeight: hasHighlight ? 700 : 600, color: hasHighlight ? '#fff' : (isCurrentMonth ? PALETTE.textPrimary : PALETTE.textDisabled) }}>
                             {cell.getUTCDate()}
                           </span>
                           <button
                             title="Novo rodízio a partir deste dia"
                             onClick={() => { setRotModal('new'); setRotScheduleFrom(iso); }}
-                            style={{ position: 'absolute', right: 4, top: '50%', transform: 'translateY(-50%)', fontSize: 12, lineHeight: 1, padding: '0 4px', cursor: 'pointer', background: 'none', border: `1px solid ${PALETTE.plusBtnBorder}`, borderRadius: 4, color: PALETTE.primary, fontWeight: 700 }}
+                            style={{
+                              position: 'absolute',
+                              right: 6,
+                              top: '50%',
+                              transform: 'translateY(-50%)',
+                              fontSize: 12,
+                              lineHeight: 1,
+                              padding: '4px 6px',
+                              cursor: 'pointer',
+                              background: hasHighlight ? PALETTE.primary : PALETTE.hoverBg,
+                              border: hasHighlight ? 'none' : `1px solid ${PALETTE.plusBtnBorder}`,
+                              borderRadius: 6,
+                              color: hasHighlight ? '#fff' : PALETTE.primary,
+                              fontWeight: 700,
+                            }}
                           >+</button>
                         </div>
                       <div style={{ marginTop: 4, flexGrow: 1, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', gap: 2 }}>
@@ -349,13 +378,14 @@ export default function CalendarPage() {
                               </button>
                               <button
                                 style={btnSmallBlue}
+                                title="Sobrescrever"
                                 onClick={() => {
                                   setEditDate(iso);
                                   setEditWorkerIds(entries.map(e => e.workerId).filter((id): id is number => id != null));
                                   setEditNote(entries[0]?.note ?? '');
                                 }}
                               >
-                                Override
+                                ✎
                               </button>
                             </>
                           ) : (
@@ -632,6 +662,7 @@ function RotationModal({ rotation, workers, onClose, onSaved, scheduleFrom }: {
   const [weekdays, setWeekdays] = useState<number[]>(rotation?.weekdays ?? []);
   const [workerIds, setWorkerIds] = useState<number[]>(rotation?.workerIds ?? []);
   const [startDate, setStartDate] = useState(rotation?.startDate?.slice(0, 10) ?? scheduleFrom ?? todayISO);
+  const [notifyUpcoming, setNotifyUpcoming] = useState(rotation?.notifyUpcoming ?? false);
   const [saving, setSaving] = useState(false);
   const [scheduleChange, setScheduleChange] = useState(rotationStarted);
   const [scheduleDate, setScheduleDate] = useState(scheduleFrom ?? (rotationStarted ? todayISO : ''));
@@ -667,7 +698,7 @@ function RotationModal({ rotation, workers, onClose, onSaved, scheduleFrom }: {
     if (workerIds.length < 1) return alert('Selecione ao menos 1 trabalhador para o rodízio.');
     if (!startDate) return alert('Data de início é obrigatória.');
     setSaving(true);
-    const body = { name: name || null, weekdays, workerIds, startDate };
+    const body = { name: name || null, weekdays, workerIds, startDate, notifyUpcoming };
     try {
       if (rotation) {
         if (scheduleChange && scheduleDate) {
@@ -683,6 +714,7 @@ function RotationModal({ rotation, workers, onClose, onSaved, scheduleFrom }: {
             weekdays,
             workerIds,
             startDate: scheduleDate,
+            notifyUpcoming,
           };
 
           // Se já existe um rodízio com essa mesma data de início, atualiza-o
@@ -772,6 +804,23 @@ function RotationModal({ rotation, workers, onClose, onSaved, scheduleFrom }: {
         <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} style={{ width: '100%', marginTop: 4, padding: 6, backgroundColor: PALETTE.backgroundSecondary, color: PALETTE.textPrimary, border: `1px solid ${PALETTE.border}` }} />
       </label>
 
+      <div style={{ marginBottom: 12, background: PALETTE.hoverBg, padding: '10px 12px', borderRadius: 6 }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
+          <input
+            type="checkbox"
+            checked={notifyUpcoming}
+            onChange={e => setNotifyUpcoming(e.target.checked)}
+            style={{ width: 18, height: 18, accentColor: PALETTE.error, cursor: 'pointer' }}
+          />
+          <div>
+            <div style={{ fontWeight: 600, fontSize: 13, color: PALETTE.textPrimary }}>Notificação visual</div>
+            <div style={{ fontSize: 12, color: PALETTE.textSecondary, marginTop: 2 }}>
+              Destaca em vermelho os dias do rodízio quando faltam 7 dias ou menos
+            </div>
+          </div>
+        </label>
+      </div>
+
       <div style={{ marginBottom: 12 }}>
         <div style={{ fontWeight: 600, marginBottom: 6, fontSize: 13 }}>Ordem dos trabalhadores</div>
         <div style={{ fontSize: 12, color: PALETTE.textSecondary, marginBottom: 8 }}>
@@ -853,7 +902,7 @@ const cellStyle: React.CSSProperties = {
   border: `1px solid ${PALETTE.border}`,
   padding: 4,
   overflow: 'hidden',
-  height: 100,
+  height: 115,
 };
 
 /* Azul – criar / editar */
