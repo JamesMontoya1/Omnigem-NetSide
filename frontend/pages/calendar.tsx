@@ -994,11 +994,37 @@ function RotationModal({ rotation, workers, onClose, onSaved, scheduleFrom }: {
         </div>
       )}
 
-      <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-        <button onClick={onClose} style={btnCancel}>Cancelar</button>
-        <button onClick={save} disabled={saving} style={btnConfirm}>
-          {saving ? 'Salvando...' : rotation ? 'Salvar' : 'Criar'}
-        </button>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+        <div>
+          {rotation && (
+            <button
+              onClick={async () => {
+                if (!confirm('Apagar este rodízio?')) return;
+                setSaving(true);
+                try {
+                  await fetch(`${API}/rotations/${rotation.id}`, { method: 'DELETE', headers: authHeaders() });
+                  onSaved();
+                } catch (e) {
+                  console.error(e);
+                  alert('Erro ao apagar rodízio.');
+                } finally {
+                  setSaving(false);
+                }
+              }}
+              disabled={saving}
+              style={btnDanger}
+            >
+              {saving ? 'Apagando...' : 'Apagar'}
+            </button>
+          )}
+        </div>
+
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button onClick={onClose} style={btnCancel}>Cancelar</button>
+          <button onClick={save} disabled={saving} style={btnConfirm}>
+            {saving ? (rotation ? 'Salvando...' : 'Salvando...') : rotation ? 'Salvar' : 'Criar'}
+          </button>
+        </div>
       </div>
     </Modal>
   );
@@ -1018,10 +1044,11 @@ const btnPrimary: React.CSSProperties = {
   background: PALETTE.primary,
   color: '#fff',
   border: 'none',
-  padding: '6px 14px',
-  borderRadius: 6,
+  padding: '8px 16px',
+  borderRadius: 8,
   cursor: 'pointer',
-  fontWeight: 600,
+  fontWeight: 700,
+  fontSize: 14,
 };
 
 /* Verde – confirmar / salvar */
@@ -1029,10 +1056,11 @@ const btnConfirm: React.CSSProperties = {
   background: PALETTE.success,
   color: '#fff',
   border: 'none',
-  padding: '6px 14px',
-  borderRadius: 6,
+  padding: '8px 16px',
+  borderRadius: 8,
   cursor: 'pointer',
-  fontWeight: 600,
+  fontWeight: 700,
+  fontSize: 14,
 };
 
 /* Vermelho – cancelar */
@@ -1040,10 +1068,11 @@ const btnCancel: React.CSSProperties = {
   background: 'transparent',
   color: PALETTE.error,
   border: `1px solid ${PALETTE.error}`,
-  padding: '6px 14px',
-  borderRadius: 6,
+  padding: '8px 16px',
+  borderRadius: 8,
   cursor: 'pointer',
-  fontWeight: 600,
+  fontWeight: 700,
+  fontSize: 14,
 };
 
 /* Vermelho sólido – apagar / excluir */
@@ -1051,78 +1080,80 @@ const btnDanger: React.CSSProperties = {
   background: PALETTE.error,
   color: '#fff',
   border: 'none',
-  padding: '6px 14px',
-  borderRadius: 6,
+  padding: '8px 16px',
+  borderRadius: 8,
   cursor: 'pointer',
-  fontWeight: 600,
+  fontWeight: 700,
+  fontSize: 14,
 };
 
 /* Botão pequeno neutro (↑ ↓ etc.) */
 const btnSmall: React.CSSProperties = {
-  fontSize: 11,
-  padding: '2px 8px',
+  fontSize: 12,
+  padding: '4px 10px',
   cursor: 'pointer',
   background: PALETTE.hoverBg,
   color: PALETTE.textPrimary,
   border: `1px solid ${PALETTE.border}`,
-  borderRadius: 6,
-  fontWeight: 600,
+  borderRadius: 8,
+  fontWeight: 700,
 };
 
 /* Botão pequeno azul – editar / criar (células) */
 const btnSmallBlue: React.CSSProperties = {
-  fontSize: 11,
-  padding: '4px 8px',
+  fontSize: 12,
+  padding: '6px 10px',
   cursor: 'pointer',
   background: PALETTE.primary,
   color: '#fff',
   border: 'none',
-  borderRadius: 6,
+  borderRadius: 8,
   fontWeight: 700,
 };
 
 /* Botão pequeno vermelho – excluir (células) */
 const btnSmallRed: React.CSSProperties = {
-  fontSize: 11,
+  fontSize: 12,
+  padding: '6px 10px',
+  cursor: 'pointer',
+  background: PALETTE.error,
+  color: '#fff',
+  border: 'none',
+  borderRadius: 8,
+  fontWeight: 700,
+};
+
+/* Botão pequeno azul – editar sidebar */
+const btnSmallBlueSidebar: React.CSSProperties = {
+  fontSize: 12,
+  padding: '4px 8px',
+  cursor: 'pointer',
+  background: PALETTE.primary,
+  color: '#fff',
+  border: 'none',
+  borderRadius: 6,
+  fontWeight: 600,
+};
+
+/* Botão pequeno vermelho – apagar sidebar */
+const btnSmallRedSidebar: React.CSSProperties = {
+  fontSize: 12,
   padding: '4px 8px',
   cursor: 'pointer',
   background: PALETTE.error,
   color: '#fff',
   border: 'none',
   borderRadius: 6,
-  fontWeight: 700,
-};
-
-/* Botão pequeno azul – editar sidebar */
-const btnSmallBlueSidebar: React.CSSProperties = {
-  fontSize: 10,
-  padding: '0px 6px',
-  cursor: 'pointer',
-  background: PALETTE.primary,
-  color: '#fff',
-  border: 'none',
-  borderRadius: 4,
-  fontWeight: 500,
-};
-
-/* Botão pequeno vermelho – apagar sidebar */
-const btnSmallRedSidebar: React.CSSProperties = {
-  fontSize: 10,
-  padding: '0px 6px',
-  cursor: 'pointer',
-  background: PALETTE.error,
-  color: '#fff',
-  border: 'none',
-  borderRadius: 4,
-  fontWeight: 500,
+  fontWeight: 600,
 };
 
 const btnNav: React.CSSProperties = {
-  padding: '4px 12px',
+  padding: '6px 14px',
   cursor: 'pointer',
   border: `1px solid ${PALETTE.border}`,
-  borderRadius: 6,
+  borderRadius: 8,
   background: PALETTE.hoverBg,
   color: PALETTE.textPrimary,
-  fontWeight: 500,
+  fontWeight: 600,
+  fontSize: 13,
 };
