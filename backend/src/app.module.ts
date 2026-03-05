@@ -8,10 +8,11 @@ import { HolidaysModule } from './holidays/holidays.module';
 import { RecurringPatternsModule } from './recurring-patterns/recurring-patterns.module';
 import { AssignmentsModule } from './assignments/assignments.module';
 import { RotationsModule } from './rotations/rotations.module';
+import { VacationsModule } from './vacations/vacations.module';
 import { AppController } from './app.controller';
 
 @Module({
-  imports: [PrismaModule, UsersModule, AuthModule, WorkersModule, HolidaysModule, RecurringPatternsModule, AssignmentsModule, RotationsModule],
+  imports: [PrismaModule, UsersModule, AuthModule, WorkersModule, HolidaysModule, RecurringPatternsModule, AssignmentsModule, RotationsModule, VacationsModule],
   controllers: [AppController],
   providers: [PrismaService],
 })

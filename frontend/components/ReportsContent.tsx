@@ -174,6 +174,20 @@ export default function ReportsContent() {
             Dias úteis
           </button>
           <button
+            onClick={() => setSelectedWeekdays([5, 6])}
+            style={{
+              background: 'transparent',
+              color: PALETTE.textSecondary,
+              border: `1px solid ${PALETTE.border}`,
+              padding: '8px 14px',
+              borderRadius: 6,
+              cursor: 'pointer',
+              fontSize: 13,
+            }}
+          >
+            Sex e Sáb
+          </button>
+          <button
             onClick={() => setSelectedWeekdays([0, 6])}
             style={{
               background: 'transparent',

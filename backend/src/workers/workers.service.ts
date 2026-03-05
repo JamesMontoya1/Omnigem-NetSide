@@ -13,12 +13,27 @@ export class WorkersService {
     return this.prisma.worker.findUnique({ where: { id } });
   }
 
-  create(data: { name: string; email?: string; color?: string }) {
-    return this.prisma.worker.create({ data });
+  create(data: { name: string; email?: string; color?: string; hireDate?: string; terminationDate?: string }) {
+    return this.prisma.worker.create({
+      data: {
+        name: data.name,
+        email: data.email,
+        color: data.color,
+        hireDate: data.hireDate ? new Date(data.hireDate) : undefined,
+        terminationDate: data.terminationDate ? new Date(data.terminationDate) : undefined,
+      },
+    });
   }
 
-  update(id: number, data: { name?: string; email?: string; color?: string; active?: boolean }) {
-    return this.prisma.worker.update({ where: { id }, data });
+  update(id: number, data: { name?: string; email?: string; color?: string; active?: boolean; hireDate?: string; terminationDate?: string }) {
+    return this.prisma.worker.update({
+      where: { id },
+      data: {
+        ...data,
+        hireDate: data.hireDate !== undefined ? (data.hireDate ? new Date(data.hireDate) : null) : undefined,
+        terminationDate: data.terminationDate !== undefined ? (data.terminationDate ? new Date(data.terminationDate) : null) : undefined,
+      },
+    });
   }
 
   async remove(id: number, removeAssignments = false) {

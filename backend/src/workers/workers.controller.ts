@@ -8,6 +8,8 @@ class CreateWorkerDto {
   name: string;
   email?: string;
   color?: string;
+  hireDate?: string;
+  terminationDate?: string;
 }
 
 class UpdateWorkerDto {
@@ -15,6 +17,8 @@ class UpdateWorkerDto {
   email?: string;
   color?: string;
   active?: boolean;
+  hireDate?: string;
+  terminationDate?: string;
 }
 
 @Controller('workers')

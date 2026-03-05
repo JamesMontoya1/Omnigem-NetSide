@@ -24,15 +24,18 @@ model User {
 
 // Trabalhadores que podem ser escalados
 model Worker {
-  id        Int      @id @default(autoincrement())
-  name      String
-  email     String?  @unique
-  color     String?
-  active    Boolean  @default(true)
-  createdAt DateTime @default(now())
+  id              Int       @id @default(autoincrement())
+  name            String
+  email           String?   @unique
+  color           String?
+  active          Boolean   @default(true)
+  hireDate        DateTime?
+  terminationDate DateTime?
+  createdAt       DateTime  @default(now())
   // relations
   recurringPatterns RecurringPattern[]
   assignments       Assignment[]
+  vacations         Vacation[]
 }
 
 // Feriados (datas em que geralmente não se escala)
@@ -87,4 +90,18 @@ model Rotation {
   endDate         DateTime? // data de finalização (se o rodízio foi substituído)
   notifyUpcoming  Boolean   @default(false) // destaca células em vermelho quando faltam ≤7 dias
   createdAt       DateTime  @default(now())
+}
+
+// Lançamentos de férias
+model Vacation {
+  id        Int      @id @default(autoincrement())
+  workerId  Int
+  worker    Worker   @relation(fields: [workerId], references: [id])
+  startDate DateTime // Data de início das férias
+  endDate   DateTime // Data final das férias
+  daysUsed  Int      // Dias usados (máx 30 por período aquisitivo)
+  sold      Boolean  @default(false) // Vendeu férias?
+  active    Boolean  @default(true)  // Lançamento ativo?
+  note      String?  // Observações
+  createdAt DateTime @default(now())
 }

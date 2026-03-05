@@ -291,8 +291,11 @@ export class RotationsService {
           statsMap.set(entry.workerId, stat);
         }
 
-        stat.total += 1;
-        if (isHoliday) stat.holidays += 1;
+        if (isHoliday) {
+          stat.holidays += 1;
+        } else {
+          stat.total += 1;
+        }
       }
     }
 

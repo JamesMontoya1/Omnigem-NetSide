@@ -143,6 +143,24 @@ export default function DashboardLayout({ initialTab, dashboardContent }: {
 
         <div style={{ paddingTop: 16, borderTop: `1px solid ${PALETTE.border}` }}>
           <button
+            onClick={() => router.push('/selection')}
+            style={{
+              width: '100%',
+              padding: '8px 12px',
+              background: 'transparent',
+              color: PALETTE.textSecondary,
+              border: `1px solid ${PALETTE.border}`,
+              borderRadius: 6,
+              cursor: 'pointer',
+              fontWeight: 600,
+              fontSize: 13,
+              marginBottom: 8,
+            }}
+          >
+            Voltar para seleção
+          </button>
+
+          <button
             onClick={logout}
             style={{
               width: '100%',
