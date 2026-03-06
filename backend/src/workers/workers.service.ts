@@ -19,6 +19,7 @@ export class WorkersService {
         name: data.name,
         email: data.email,
         color: data.color,
+        active: data.terminationDate ? false : undefined,
         hireDate: data.hireDate ? new Date(data.hireDate) : undefined,
         terminationDate: data.terminationDate ? new Date(data.terminationDate) : undefined,
       },
@@ -26,10 +27,14 @@ export class WorkersService {
   }
 
   update(id: number, data: { name?: string; email?: string; color?: string; active?: boolean; hireDate?: string; terminationDate?: string }) {
+    const active = data.terminationDate !== undefined
+      ? (data.terminationDate ? false : (data.active ?? undefined))
+      : data.active;
     return this.prisma.worker.update({
       where: { id },
       data: {
         ...data,
+        active,
         hireDate: data.hireDate !== undefined ? (data.hireDate ? new Date(data.hireDate) : null) : undefined,
         terminationDate: data.terminationDate !== undefined ? (data.terminationDate ? new Date(data.terminationDate) : null) : undefined,
       },

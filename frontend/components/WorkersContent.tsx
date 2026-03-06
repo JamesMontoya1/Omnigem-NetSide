@@ -3,6 +3,37 @@ import { PALETTE, btnPrimary, btnSmall, inputStyle, cardStyle } from '../styles/
 import { useToast } from './ToastProvider'
 import { API_BASE, authHeaders, jsonAuthHeaders } from '../config/api'
 
+function parseLocalDate(s: string) {
+  const [y, m, d] = s.slice(0, 10).split('-').map(Number)
+  return new Date(y, m - 1, d)
+}
+
+function computeTenure(hireDate?: string | null, termDate?: string | null) {
+  if (!hireDate || !termDate) return '—'
+  const h = parseLocalDate(hireDate.slice(0, 10))
+  const t = parseLocalDate(termDate.slice(0, 10))
+
+  let years = t.getFullYear() - h.getFullYear()
+  let months = t.getMonth() - h.getMonth()
+  let days = t.getDate() - h.getDate()
+
+  if (days < 0) {
+    const prevMonthLastDay = new Date(t.getFullYear(), t.getMonth(), 0).getDate()
+    days += prevMonthLastDay
+    months--
+  }
+  if (months < 0) {
+    months += 12
+    years--
+  }
+
+  const parts: string[] = []
+  if (years > 0) parts.push(`${years}a`)
+  if (months > 0) parts.push(`${months}m`)
+  if (days > 0) parts.push(`${days}d`)
+  return parts.length ? parts.join(' ') : '< 1d'
+}
+
 type Worker = {
   id: number
   name: string
@@ -91,14 +122,17 @@ export default function WorkersContent({ readOnly = false }: { readOnly?: boolea
   async function fireWorker(worker: Worker) {
     if (!worker.active) return
     if (!confirm('Demitir este trabalhador?')) return
-
     const termination = todayIso()
+
+    // If worker already has a terminationDate, do not overwrite it.
+    const payload: any = { active: false }
+    if (!worker.terminationDate) payload.terminationDate = termination
 
     try {
       const res = await fetch(`${API_BASE}/workers/${worker.id}`, {
         method: 'PUT',
         headers: jsonAuthHeaders(),
-        body: JSON.stringify({ active: false, terminationDate: termination }),
+        body: JSON.stringify(payload),
       })
       const txt = await res.text()
       if (!res.ok) {
@@ -109,7 +143,7 @@ export default function WorkersContent({ readOnly = false }: { readOnly?: boolea
       }
       addToast('Trabalhador demitido', 'success')
       // Se estiver editando este trabalhador no modal, atualiza a data localmente
-      if (editingId === worker.id) {
+      if (editingId === worker.id && !worker.terminationDate) {
         setTerminationDate(termination)
       }
       fetchWorkers()
@@ -192,8 +226,8 @@ export default function WorkersContent({ readOnly = false }: { readOnly?: boolea
               <strong style={{ color: PALETTE.textPrimary }}>{w.name}</strong>
               <div style={{ fontSize: 11, color: PALETTE.textSecondary, marginTop: 2 }}>
                 {w.active ? 'Ativo' : 'Inativo'}
-                {w.hireDate && ` · Contratado em ${new Date(w.hireDate).toLocaleDateString('pt-BR')}`}
-                {w.terminationDate && ` · Demitido em ${new Date(w.terminationDate).toLocaleDateString('pt-BR')}`}
+                {w.hireDate && ` · Contratado em ${parseLocalDate(w.hireDate).toLocaleDateString('pt-BR')}`}
+                {w.terminationDate && ` · Demitido em ${parseLocalDate(w.terminationDate).toLocaleDateString('pt-BR')}`}
               </div>
             </div>
 
@@ -265,6 +299,14 @@ export default function WorkersContent({ readOnly = false }: { readOnly?: boolea
                     onChange={(e) => setTerminationDate(e.target.value)}
                     style={inputStyle}
                   />
+                </div>
+              )}
+              {editingId && terminationDate && hireDate && (
+                <div>
+                  <label style={{ display: 'block', fontWeight: 600, fontSize: 13, color: PALETTE.textSecondary, marginBottom: 4 }}>Tempo trabalhado</label>
+                  <div style={{ padding: '8px 10px', background: PALETTE.backgroundSecondary, borderRadius: 6, color: PALETTE.textPrimary }}>
+                    {computeTenure(hireDate, terminationDate)}
+                  </div>
                 </div>
               )}
               <div>

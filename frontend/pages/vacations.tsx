@@ -33,6 +33,12 @@ type Holiday = { id: number; date: string; name: string }
 /* ── Helpers ── */
 function fmtDate(d: string | null | undefined) {
   if (!d) return '—'
+  // Se vier como 'YYYY-MM-DD' (ou com hora depois), parseia como data local
+  // para não sofrer shift de fuso e cair no dia anterior.
+  if (typeof d === 'string' && /^\d{4}-\d{2}-\d{2}/.test(d)) {
+    const local = parseLocalDate(d.slice(0, 10))
+    return local.toLocaleDateString('pt-BR')
+  }
   return new Date(d).toLocaleDateString('pt-BR')
 }
 
@@ -151,6 +157,21 @@ export default function VacationsPage() {
 
   // Holiday info modal
   const [holidayModalData, setHolidayModalData] = useState<Holiday[] | null>(null)
+
+  // Day detail modal
+  const [selectedDay, setSelectedDay] = useState<Date | null>(null)
+  // Panel open state for enter/exit animation
+  const [panelOpen, setPanelOpen] = useState(false)
+
+  // Trigger enter animation when modal mounts
+  useEffect(() => {
+    if (selectedDay) {
+      setPanelOpen(false)
+      requestAnimationFrame(() => setPanelOpen(true))
+    } else {
+      setPanelOpen(false)
+    }
+  }, [selectedDay])
 
   // Collapsible sections state
   const [expanded, setExpanded] = useState<Record<string, boolean>>({ pending: true, upcoming: true, tenure: true, nextVac: true })
@@ -354,7 +375,7 @@ export default function VacationsPage() {
 
       {/* Modal: Agendar Férias */}
       {showScheduleModal && (
-        <div style={{ position: 'fixed', inset: 0, background: '#000000aa', display: 'flex', alignItems: 'flex-start', justifyContent: 'flex-start', zIndex: 1000, padding: 24 }}
+        <div style={{ position: 'fixed', inset: 0, background: '#000000aa', display: 'flex', alignItems: 'flex-start', justifyContent: 'flex-start', zIndex: 1100, padding: 24 }}
           onClick={e => { if (e.target === e.currentTarget) { setShowScheduleModal(false); resetForm() } }}>
           <div style={{ width: 560, maxWidth: '95%', maxHeight: 'calc(100vh - 48px)', overflow: 'auto', background: PALETTE.cardBg, borderRadius: 10, padding: 24, boxShadow: '0 8px 40px rgba(0,0,0,0.4)' }}>
             {renderSchedule()}
@@ -403,7 +424,7 @@ export default function VacationsPage() {
             <div style={{ padding: '16px 20px' }}>
               {holidayModalData.map(h => (
                 <div key={h.id} style={{
-                  padding: '14px 16px', background: '#ff8c00',
+                  padding: '14px 16px', background: '#FF6A00',
                   border: '1px solid #ff8c0333', borderRadius: 8, marginBottom: 8,
                 }}>
                   <div style={{ fontSize: 18, fontWeight: 700, color: '#ffffff' }}>{h.name}</div>
@@ -414,6 +435,153 @@ export default function VacationsPage() {
           </div>
         </div>
       )}
+
+      {/* Modal: Day detail */}
+      {selectedDay && (() => {
+        const dayVacs = vacations.filter(v => {
+          if (!v.active) return false
+          const s = isoDate(new Date(v.startDate))
+          const e = isoDate(new Date(v.endDate))
+          const iso = isoDate(selectedDay)
+          return iso >= s && iso <= e
+        })
+        const dayHols = holidays.filter(h => isoDate(parseLocalDate(h.date.slice(0, 10))) === isoDate(selectedDay))
+        const dayOfWeek = ['Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado'][selectedDay.getDay()]
+        const isWeekend = selectedDay.getDay() === 0 || selectedDay.getDay() === 6
+        return (
+          <div style={{ position: 'fixed', inset: 0, background: '#000000aa', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', zIndex: 1000 }}
+            onClick={e => { if (e.target === e.currentTarget) { setPanelOpen(false); setTimeout(() => setSelectedDay(null), 300) } }}>
+            <div style={{
+              width: 420, maxWidth: '95%', height: '100vh', overflow: 'auto',
+              background: PALETTE.cardBg, padding: 0,
+              boxShadow: '-8px 0 40px rgba(0,0,0,0.5)',
+              display: 'flex', flexDirection: 'column',
+              transform: panelOpen ? 'translateX(0%)' : 'translateX(100%)',
+              transition: 'transform 280ms cubic-bezier(.2,.9,.2,1)',
+              willChange: 'transform',
+            }}>
+              {/* Header */}
+              <div style={{
+                padding: '20px 24px', borderBottom: `1px solid ${PALETTE.border}`,
+                background: PALETTE.backgroundSecondary,
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div>
+                    <h2 style={{ margin: 0, fontSize: 20, color: PALETTE.textPrimary }}>
+                      {selectedDay.getDate()} de {MONTHS[selectedDay.getMonth()]} {selectedDay.getFullYear()}
+                    </h2>
+                    <div style={{ fontSize: 13, color: isWeekend ? PALETTE.warning : PALETTE.textSecondary, marginTop: 4 }}>
+                      {dayOfWeek}{isWeekend ? ' (fim de semana)' : ''}
+                    </div>
+                  </div>
+                  <button onClick={() => { setPanelOpen(false); setTimeout(() => setSelectedDay(null), 300) }} style={{
+                    background: PALETTE.hoverBg, border: `1px solid ${PALETTE.border}`, borderRadius: 6,
+                    color: PALETTE.textPrimary, cursor: 'pointer', padding: '6px 12px', fontSize: 14, fontWeight: 600,
+                  }}>✕</button>
+                </div>
+              </div>
+
+              {/* Content */}
+              <div style={{ padding: '20px 24px', flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 20 }}>
+
+                {/* Holidays section */}
+                {dayHols.length > 0 && (
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                      <span style={{ fontSize: 16 }}>⭐</span>
+                      <h3 style={{ margin: 0, fontSize: 15, color: '#daa520' }}>Feriados</h3>
+                    </div>
+                    {dayHols.map(h => (
+                      <div key={h.id} style={{
+                        padding: '12px 14px', background: '#FF6A00', borderRadius: 8, marginBottom: 6,
+                      }}>
+                        <div style={{ fontSize: 15, fontWeight: 700, color: '#fff' }}>{h.name}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Vacations section */}
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                    <span style={{ fontSize: 16 }}>🏖️</span>
+                    <h3 style={{ margin: 0, fontSize: 15, color: PALETTE.primary }}>Férias</h3>
+                    <span style={{
+                      fontSize: 11, background: `${PALETTE.primary}33`, color: PALETTE.primary,
+                      padding: '2px 8px', borderRadius: 10, fontWeight: 600,
+                    }}>{dayVacs.length}</span>
+                  </div>
+                  {dayVacs.length === 0 && (
+                    <p style={{ color: PALETTE.textDisabled, margin: 0, fontSize: 13 }}>Nenhuma férias neste dia</p>
+                  )}
+                  {dayVacs.map(v => {
+                    const w = workers.find(w => w.id === v.workerId)
+                    return (
+                      <div key={v.id} style={{
+                        display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px',
+                        background: PALETTE.backgroundSecondary, borderRadius: 8, marginBottom: 6,
+                        border: `1px solid ${PALETTE.border}`,
+                        borderLeft: `4px solid ${w?.color || PALETTE.border}`,
+                      }}>
+                        <span style={{ width: 14, height: 14, borderRadius: '50%', background: w?.color || PALETTE.border, flexShrink: 0 }} />
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                            <strong style={{ fontSize: 14, display: 'block', maxWidth: '80px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{w?.name || '?'}</strong>
+                            {v.sold && <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 4, background: `${PALETTE.info}22`, color: PALETTE.info }}>Vendeu</span>}
+                          </div>
+                          <div style={{ fontSize: 12, color: PALETTE.textSecondary, marginTop: 4 }}>
+                            {fmtDate(v.startDate)} — {fmtDate(v.endDate)} · {v.daysUsed} dias
+                          </div>
+                          {v.note && <div style={{ fontSize: 11, color: PALETTE.textSecondary, marginTop: 2, fontStyle: 'italic' }}>({v.note})</div>}
+                        </div>
+                        {isAdmin && (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                            <button onClick={() => { startEdit(v) }} style={btnSmall}>Editar</button>
+                            <button onClick={() => { setPanelOpen(false); setTimeout(() => onDelete(v.id), 300) }} style={{ ...btnSmallRed }}>Apagar</button>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+
+                {/* Summary info */}
+                {dayVacs.length > 0 && (
+                  <div style={{
+                    padding: '12px 14px', background: PALETTE.backgroundSecondary, borderRadius: 8,
+                    border: `1px solid ${PALETTE.border}`,
+                  }}>
+                    <div style={{ fontSize: 12, color: PALETTE.textSecondary, marginBottom: 6 }}>Resumo do dia</div>
+                    <div style={{ fontSize: 13, color: PALETTE.textPrimary }}>
+                      <strong>{dayVacs.filter(v => !v.sold).length}</strong> colaborador(es) em férias
+                      {dayVacs.some(v => v.sold) && <span> · <strong>{dayVacs.filter(v => v.sold).length}</strong> férias vendidas</span>}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Footer with action */}
+                {isAdmin && (
+                <div style={{ padding: '16px 24px', borderTop: `1px solid ${PALETTE.border}`, background: PALETTE.backgroundSecondary }}>
+                  <button
+                    onClick={() => {
+                      const sel = isoDate(selectedDay)
+                      setPanelOpen(false)
+                      setTimeout(() => {
+                        setSelectedDay(null)
+                        resetForm()
+                        setFormStart(sel)
+                        setShowScheduleModal(true)
+                      }, 300)
+                    }}
+                    style={{ ...btnPrimary, width: '100%', textAlign: 'center' }}
+                  >+ Agendar férias neste dia</button>
+                </div>
+              )}
+            </div>
+          </div>
+        )
+      })()}
 
       {/* Modal: Feriados */}
       {showHolidaysModal && (
@@ -462,161 +630,32 @@ export default function VacationsPage() {
 
     return (
       <div style={{ display: 'flex', gap: 20, alignItems: 'stretch' }}>
-        {/* LEFT – collapsible panels */}
-        <div style={{ flex: 4, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 12 }}>
-
-          {/* Row: Pendentes + Próximas side by side */}
-          <div style={{ display: 'flex', gap: 12 }}>
-
-          {/* Férias Pendentes */}
-          <div style={{ flex: 1, minWidth: 0 }}>
-            {sectionHeader('pending', '⏳', 'Férias Pendentes', PALETTE.warning)}
-            {expanded.pending && (
-              <div style={{ ...cardStyle, borderTop: 'none', borderRadius: '0 0 8px 8px', maxHeight: 220, overflowY: 'auto' }}>
-                {pendingWorkers.length === 0 && <p style={{ color: PALETTE.textDisabled, margin: 0, fontSize: 13 }}>Nenhum saldo pendente</p>}
-                {pendingWorkers.map(s => (
-                  <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 0', borderBottom: `1px solid ${PALETTE.border}` }}>
-                    <span style={{ width: 12, height: 12, borderRadius: '50%', background: s.color || PALETTE.border, flexShrink: 0 }} />
-                    <div style={{ flex: 1, fontSize: 13 }}>
-                      <strong>{s.name}</strong>
-                      <span style={{ fontSize: 11, color: PALETTE.textSecondary, marginLeft: 6 }}>({tenureText(s.hireDate)})</span>
-                    </div>
-                    <span style={{ fontWeight: 700, color: PALETTE.warning, fontSize: 13 }}>{s.pendingDays}d</span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Agendamento de férias */}
-          <div style={{ flex: 1, minWidth: 0 }}>
-            {sectionHeader('upcoming', '📅', 'Agendamento de férias', PALETTE.info)}
-            {expanded.upcoming && (
-              <div style={{ ...cardStyle, borderTop: 'none', borderRadius: '0 0 8px 8px', maxHeight: 220, overflowY: 'auto' }}>
-                {upcomingAll.length === 0 && <p style={{ color: PALETTE.textDisabled, margin: 0, fontSize: 13 }}>Nenhuma férias agendada</p>}
-                {upcomingAll.map((v: any) => (
-                  <div key={v.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 0', borderBottom: `1px solid ${PALETTE.border}` }}>
-                    <span style={{ width: 12, height: 12, borderRadius: '50%', background: v.workerColor || PALETTE.border, flexShrink: 0 }} />
-                    <div style={{ flex: 1 }}>
-                      <strong style={{ fontSize: 13 }}>{v.workerName}</strong>
-                      <div style={{ fontSize: 11, color: PALETTE.textSecondary }}>
-                        {fmtDate(v.startDate)} — {fmtDate(v.endDate)} ({v.daysUsed}d)
-                      </div>
-                    </div>
-                    {isAdmin && <button onClick={() => startEdit(v)} style={btnSmall}>Editar</button>}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          </div>{/* end row */}
-
-          {/* Row: Tempo de Casa + Próximas Férias */}
-          <div style={{ display: 'flex', gap: 12 }}>
-
-          {/* Tempo de Casa */}
-          <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-            {sectionHeader('tenure', '🏢', 'Tempo de Casa', PALETTE.success)}
-            {expanded.tenure && (
-              <div style={{ ...cardStyle, borderTop: 'none', borderRadius: '0 0 8px 8px', display: 'flex', flexDirection: 'column', gap: 8, flex: 1, overflowY: 'auto' }}>
-                {filteredSummary.length === 0 && <p style={{ color: PALETTE.textDisabled, margin: 0, fontSize: 13 }}>Nenhum trabalhador ativo</p>}
-                {filteredSummary.slice().sort((a, b) => {
-                  const da = daysUntilNextVacation(a.hireDate)
-                  const db = daysUntilNextVacation(b.hireDate)
-                  const na = da === null ? Number.MAX_SAFE_INTEGER : da
-                  const nb = db === null ? Number.MAX_SAFE_INTEGER : db
-                  return na - nb
-                }).map(s => {
-                  const daysLeft = daysUntilNextVacation(s.hireDate)
-                  const showBadge = daysLeft !== null && daysLeft <= 30
-                  return (
-                    <div key={s.id} style={{
-                      display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px',
-                      background: PALETTE.backgroundSecondary, borderRadius: 6, border: `1px solid ${PALETTE.border}`,
-                    }}>
-                      <span style={{ width: 14, height: 14, borderRadius: '50%', background: s.color || PALETTE.border, flexShrink: 0 }} />
-                      <div style={{ minWidth: 0, flex: 1 }}>
-                        <strong style={{ fontSize: 13 }}>{s.name}</strong>
-                        <div style={{ fontSize: 12, color: PALETTE.textSecondary }}>
-                          {s.hireDate ? (
-                            <strong style={{ color: PALETTE.success }}>{tenureFull(s.hireDate, nowTick)}</strong>
-                          ) : (
-                            <span style={{ color: PALETTE.textDisabled }}>Sem data</span>
-                          )}
-                        </div>
-                      </div>
-                      {showBadge && (
-                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', lineHeight: 1 }}>
-                          <div style={{ fontSize: 12, fontWeight: 700, color: colorForAnniv(daysLeft) }}>{daysLeft}</div>
-                          <div style={{ fontSize: 10, color: PALETTE.textSecondary }}>dias</div>
-                        </div>
-                      )}
-                    </div>
-                  )
-                })}
-              </div>
-            )}
-          </div>
-
-          {/* Dias para Próximas Férias */}
-          <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-            {sectionHeader('nextVac', '⏱️', 'Dias p/ Próximas Férias', PALETTE.info)}
-            {expanded.nextVac && (
-              <div style={{ ...cardStyle, borderTop: 'none', borderRadius: '0 0 8px 8px', display: 'flex', flexDirection: 'column', gap: 8, flex: 1, overflowY: 'auto' }}>
-                {filteredSummary.length === 0 && <p style={{ color: PALETTE.textDisabled, margin: 0, fontSize: 13 }}>Nenhum trabalhador ativo</p>}
-                {filteredSummary.slice().sort((a, b) => {
-                  const da = daysUntilNextVacation(a.hireDate)
-                  const db = daysUntilNextVacation(b.hireDate)
-                  const na = da === null ? Number.MAX_SAFE_INTEGER : da
-                  const nb = db === null ? Number.MAX_SAFE_INTEGER : db
-                  return na - nb
-                }).map(s => {
-                  const daysLeft = daysUntilNextVacation(s.hireDate)
-                  // choose color by thresholds:
-                  // >30d -> #9bc4e6, >10d -> #5288b4, =0 -> #00ff00, else -> warning
-                  const colorForDays = (d: number | null) => {
-                    if (d === null) return PALETTE.textDisabled
-                    if (d === 0) return '#00ff00'
-                    if (d > 30) return '#9bc4e6'
-                    if (d > 10) return '#5288b4'
-                    return PALETTE.warning
-                  }
-
-                  return (
-                    <div key={s.id} style={{
-                      display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 10px',
-                      background: PALETTE.backgroundSecondary, borderRadius: 6, border: `1px solid ${PALETTE.border}`,
-                    }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <span style={{ width: 14, height: 14, borderRadius: '50%', background: s.color || PALETTE.border, flexShrink: 0 }} />
-                        <strong style={{ fontSize: 13 }}>{s.name}</strong>
-                      </div>
-                      <div style={{ textAlign: 'center', flexShrink: 0 }}>
-                        {daysLeft !== null ? (
-                          <>
-                            <div style={{ fontSize: 18, fontWeight: 700, color: colorForDays(daysLeft) }}>{daysLeft}</div>
-                            <div style={{ fontSize: 10, color: PALETTE.textSecondary }}>dias</div>
-                          </>
-                        ) : (
-                          <span style={{ fontSize: 11, color: PALETTE.textDisabled }}>Sem data</span>
-                        )}
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            )}
-          </div>
-
-          </div>{/* end row tenure + next vac */}
-        </div>
-
-        {/* RIGHT – Calendar */}
+        {/* LEFT – Calendar */}
         <div style={{ ...cardStyle, flex: 6, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
             <button onClick={() => setCalMonth(new Date(calMonth.getFullYear(), calMonth.getMonth() - 1, 1))} style={btnSmall}>◀</button>
-            <h3 style={{ margin: 0, fontSize: 16 }}>{MONTHS[calMonth.getMonth()]} {calMonth.getFullYear()}</h3>
+            <h3 style={{ margin: 0, fontSize: 16, minWidth: 120 }}>{MONTHS[calMonth.getMonth()]} {calMonth.getFullYear()}</h3>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <select
+                value={calMonth.getMonth()}
+                onChange={e => setCalMonth(new Date(calMonth.getFullYear(), Number(e.target.value), 1))}
+                style={{ padding: 6, width: 150, backgroundColor: PALETTE.backgroundSecondary, color: PALETTE.textPrimary, border: `1px solid ${PALETTE.border}`, borderRadius: 6 }}
+              >
+                {MONTHS.map((mn, i) => <option key={i} value={i}>{mn}</option>)}
+              </select>
+              <select
+                value={calMonth.getFullYear()}
+                onChange={e => setCalMonth(new Date(Number(e.target.value), calMonth.getMonth(), 1))}
+                style={{ padding: 6, backgroundColor: PALETTE.backgroundSecondary, color: PALETTE.textPrimary, border: `1px solid ${PALETTE.border}`, borderRadius: 6 }}
+              >
+                {(() => {
+                  const cur = calMonth.getFullYear()
+                  const arr: number[] = []
+                  for (let y = cur - 5; y <= cur + 5; y++) arr.push(y)
+                  return arr.map(y => <option key={y} value={y}>{y}</option>)
+                })()}
+              </select>
+            </div>
             <button onClick={() => setCalMonth(new Date(calMonth.getFullYear(), calMonth.getMonth() + 1, 1))} style={btnSmall}>▶</button>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 2, flex: 1 }}>
@@ -625,7 +664,7 @@ export default function VacationsPage() {
             ))}
             {calendarDays.map((d, i) => {
               const vacs = vacationsForDate(d.date)
-              const hols = holidays.filter(h => isoDate(new Date(h.date)) === isoDate(d.date))
+              const hols = holidays.filter(h => isoDate(parseLocalDate(h.date.slice(0, 10))) === isoDate(d.date))
               const isToday = isoDate(d.date) === isoDate(new Date())
               const isHoliday = hols.length > 0 && d.current
               const baseBg = !d.current ? PALETTE.notCurrentBg : isToday ? PALETTE.todayBg : PALETTE.cardBg
@@ -645,7 +684,10 @@ export default function VacationsPage() {
                   opacity: d.current ? 1 : 0.4,
                   position: 'relative',
                   overflow: 'hidden',
-                }}>
+                  cursor: d.current ? 'pointer' : 'default',
+                }}
+                onClick={() => { if (d.current) setSelectedDay(d.date) }}
+                >
                   {/* Star badge for holidays */}
                   {isHoliday && (
                     <span
@@ -682,10 +724,10 @@ export default function VacationsPage() {
                       return (
                         <div
                           key={v.id}
-                          onClick={isAdmin ? () => startEdit(v) : undefined}
+                          onClick={isAdmin ? (e) => { e.stopPropagation(); startEdit(v) } : undefined}
                           role={isAdmin ? 'button' : undefined}
                           tabIndex={isAdmin ? 0 : undefined}
-                          onKeyDown={isAdmin ? (e) => { if (e.key === 'Enter' || e.key === ' ') startEdit(v) } : undefined}
+                          onKeyDown={isAdmin ? (e) => { e.stopPropagation(); if (e.key === 'Enter' || e.key === ' ') startEdit(v) } : undefined}
                           title={w?.name || '?'}
                           style={{
                             fontSize: 13, padding: '1px 4px', borderRadius: 3, marginBottom: 1,
@@ -703,6 +745,208 @@ export default function VacationsPage() {
               )
             })}
           </div>
+        </div>
+
+        {/* RIGHT – collapsible panels */}
+        <div style={{ flex: 4, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 12, minHeight: 0 }}>
+
+          {/* Row: Pendentes + Próximas side by side */}
+          <div style={{ display: 'flex', gap: 12 }}>
+
+          {/* Férias Pendentes */}
+          <div style={{ flex: 1, minWidth: 0 }}>
+            {sectionHeader('pending', '⏳', 'Férias Pendentes', PALETTE.warning)}
+            <div style={{
+              ...cardStyle,
+              borderTop: 'none',
+              borderRadius: expanded.pending ? '0 0 8px 8px' : 8,
+              maxHeight: expanded.pending ? 220 : 0,
+              overflowY: 'auto',
+              transition: 'max-height 320ms cubic-bezier(.2,.9,.2,1), opacity 200ms ease',
+              opacity: expanded.pending ? 1 : 0,
+            }}>
+              {pendingWorkers.length === 0 && <p style={{ color: PALETTE.textDisabled, margin: 0, fontSize: 13 }}>Nenhum saldo pendente</p>}
+              {pendingWorkers.map(s => (
+                <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 0', borderBottom: `1px solid ${PALETTE.border}` }}>
+                  <span style={{ width: 12, height: 12, borderRadius: '50%', background: s.color || PALETTE.border, flexShrink: 0 }} />
+                  <div style={{ flex: 1, fontSize: 13, minWidth: 0 }}>
+                    <strong style={{ display: 'block', maxWidth: '80px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name}</strong>
+                  </div>
+                  <span style={{ fontWeight: 700, color: PALETTE.warning, fontSize: 13 }}>{s.pendingDays}d</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Agendamento de férias */}
+          <div style={{ flex: 1, minWidth: 0 }}>
+            {sectionHeader('upcoming', '📅', 'Agendamento de férias', PALETTE.info)}
+            <div style={{
+              ...cardStyle,
+              borderTop: 'none',
+              borderRadius: expanded.upcoming ? '0 0 8px 8px' : 8,
+              maxHeight: expanded.upcoming ? 220 : 0,
+              overflowY: 'auto',
+              transition: 'max-height 320ms cubic-bezier(.2,.9,.2,1), opacity 200ms ease',
+              opacity: expanded.upcoming ? 1 : 0,
+            }}>
+              {upcomingAll.length === 0 && <p style={{ color: PALETTE.textDisabled, margin: 0, fontSize: 13 }}>Nenhuma férias agendada</p>}
+              {upcomingAll.map((v: any) => (
+                <div key={v.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 0', borderBottom: `1px solid ${PALETTE.border}` }}>
+                  <span style={{ width: 12, height: 12, borderRadius: '50%', background: v.workerColor || PALETTE.border, flexShrink: 0 }} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <strong style={{ fontSize: 13, display: 'block', maxWidth: '80px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{v.workerName}</strong>
+                    <div style={{ fontSize: 11, color: PALETTE.textSecondary }}>
+                      {fmtDate(v.startDate)} — {fmtDate(v.endDate)} ({v.daysUsed}d)
+                    </div>
+                  </div>
+                  {isAdmin && <button onClick={() => startEdit(v)} style={btnSmall}>Editar</button>}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          </div>{/* end row */}
+
+          {/* Row: Tempo de Casa + Próximas Férias */}
+          <div style={{ display: 'flex', gap: 12, alignItems: 'stretch' }}>
+
+          {/* Tempo de Casa */}
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+            {sectionHeader('tenure', '🏢', 'Tempo de Casa', PALETTE.success)}
+            <div style={{
+              ...cardStyle,
+              borderTop: 'none',
+              borderRadius: expanded.tenure ? '0 0 8px 8px' : 8,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 8,
+              maxHeight: expanded.tenure ? 340 : 0,
+              overflowY: 'auto',
+              transition: 'max-height 360ms cubic-bezier(.2,.9,.2,1), opacity 220ms ease',
+              opacity: expanded.tenure ? 1 : 0,
+              flex: 1,
+            }}>
+              {filteredSummary.length === 0 && <p style={{ color: PALETTE.textDisabled, margin: 0, fontSize: 13 }}>Nenhum trabalhador ativo</p>}
+              {filteredSummary.slice().sort((a, b) => {
+                  // ordenar por tempo de casa completo: anos, meses, dias, horas, etc.
+                  const aMs = a.hireDate ? (nowTick - new Date(a.hireDate).getTime()) : Number.NEGATIVE_INFINITY
+                  const bMs = b.hireDate ? (nowTick - new Date(b.hireDate).getTime()) : Number.NEGATIVE_INFINITY
+                  if (bMs !== aMs) return bMs - aMs
+                  return a.name.localeCompare(b.name)
+                }).map(s => {
+                  const daysLeft = daysUntilNextVacation(s.hireDate)
+                  // calcular a data do próximo aniversário (próxima data em que o trabalhador ganha férias)
+                  const nextVacationDate = (() => {
+                    if (!s.hireDate) return null
+                    const h = new Date(s.hireDate)
+                    const now = new Date()
+                    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+                    let anniv = new Date(now.getFullYear(), h.getUTCMonth(), h.getUTCDate())
+                    if (anniv.getTime() - today.getTime() < 0) anniv = new Date(now.getFullYear() + 1, h.getUTCMonth(), h.getUTCDate())
+                    return fmtDate(isoDate(anniv))
+                  })()
+                  const showBadge = daysLeft !== null && daysLeft <= 30
+                  return (
+                    <div key={s.id} style={{
+                      display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px',
+                      background: PALETTE.backgroundSecondary, borderRadius: 6, border: `1px solid ${PALETTE.border}`,
+                    }}>
+                      <span style={{ width: 14, height: 14, borderRadius: '50%', background: s.color || PALETTE.border, flexShrink: 0 }} />
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <strong style={{ fontSize: 13, display: 'block', maxWidth: '80px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name}</strong>
+                        <div style={{ fontSize: 12, color: PALETTE.textSecondary }}>
+                          {s.hireDate ? (
+                            <strong style={{ color: PALETTE.success }}>{tenureFull(s.hireDate, nowTick)}</strong>
+                          ) : (
+                            <span style={{ color: PALETTE.textDisabled }}>Sem data</span>
+                          )}
+                        </div>
+                      </div>
+                      {showBadge && (
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', lineHeight: 1 }}>
+                          <div style={{ fontSize: 12, fontWeight: 700, color: colorForAnniv(daysLeft) }}>{daysLeft}</div>
+                          <div style={{ fontSize: 10, color: PALETTE.textSecondary }}>dias</div>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+          </div>
+
+          {/* Dias para Próximas Férias */}
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+            {sectionHeader('nextVac', '⏱️', 'Dias p/ Próximas Férias', PALETTE.info)}
+            <div style={{
+              ...cardStyle,
+              borderTop: 'none',
+              borderRadius: expanded.nextVac ? '0 0 8px 8px' : 8,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 8,
+              maxHeight: expanded.nextVac ? 340 : 0,
+              overflowY: 'auto',
+              transition: 'max-height 360ms cubic-bezier(.2,.9,.2,1), opacity 220ms ease',
+              opacity: expanded.nextVac ? 1 : 0,
+              flex: 1,
+            }}>
+              {filteredSummary.length === 0 && <p style={{ color: PALETTE.textDisabled, margin: 0, fontSize: 13 }}>Nenhum trabalhador ativo</p>}
+              {filteredSummary.slice().sort((a, b) => {
+                  const da = daysUntilNextVacation(a.hireDate)
+                  const db = daysUntilNextVacation(b.hireDate)
+                  const na = da === null ? Number.MAX_SAFE_INTEGER : da
+                  const nb = db === null ? Number.MAX_SAFE_INTEGER : db
+                  return na - nb
+                }).map(s => {
+                  const daysLeft = daysUntilNextVacation(s.hireDate)
+                  const nextVacationDate = (() => {
+                    if (daysLeft === null) return null
+                    const now = new Date()
+                    const target = new Date(now.getFullYear(), now.getMonth(), now.getDate() + daysLeft)
+                    return fmtDate(isoDate(target))
+                  })()
+                  // choose color by thresholds:
+                  // >30d -> #9bc4e6, >10d -> #5288b4, =0 -> #00ff00, else -> warning
+                  const colorForDays = (d: number | null) => {
+                    if (d === null) return PALETTE.textDisabled
+                    if (d === 0) return '#00ff00'
+                    if (d > 30) return '#9bc4e6'
+                    if (d > 10) return '#5288b4'
+                    return PALETTE.warning
+                  }
+
+                  return (
+                    <div key={s.id} style={{
+                      display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 10px',
+                      background: PALETTE.backgroundSecondary, borderRadius: 6, border: `1px solid ${PALETTE.border}`,
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span style={{ width: 14, height: 14, borderRadius: '50%', background: s.color || PALETTE.border, flexShrink: 0 }} />
+                        <strong style={{ fontSize: 13, display: 'block', maxWidth: '80px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name}</strong>
+                      </div>
+                      <div style={{ textAlign: 'center', flexShrink: 0 }}>
+                        {daysLeft !== null ? (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                            {nextVacationDate && (
+                              <div style={{ fontSize: 12, color: PALETTE.textSecondary }}>{nextVacationDate}</div>
+                            )}
+                            <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+                              <div style={{ fontSize: 18, fontWeight: 700, color: colorForDays(daysLeft) }}>{daysLeft}</div>
+                              <div style={{ fontSize: 10, color: PALETTE.textSecondary }}>dias</div>
+                            </div>
+                          </div>
+                        ) : (
+                          <span style={{ fontSize: 11, color: PALETTE.textDisabled }}>Sem data</span>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+          </div>
+
+          </div>{/* end row tenure + next vac */}
         </div>
       </div>
     )
@@ -807,8 +1051,8 @@ export default function VacationsPage() {
               }}>
                 <span style={{ width: 16, height: 16, borderRadius: '50%', background: w?.color || PALETTE.border, flexShrink: 0 }} />
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                      <strong>{w?.name || '?'}</strong>
+                      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', minWidth: 0 }}>
+                      <strong style={{ display: 'block', maxWidth: '80px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{w?.name || '?'}</strong>
                     {v.sold && <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 4, background: `${PALETTE.info}22`, color: PALETTE.info }}>Vendeu</span>}
                     {!v.active && <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 4, background: `${PALETTE.error}22`, color: PALETTE.error }}>Inativo</span>}
                   </div>

@@ -54,7 +54,7 @@ function weekStartUTC(d: Date): Date {
 const WEEKDAY_LABELS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 
 /* ── tipos ── */
-type Worker = { id: number; name: string };
+type Worker = { id: number; name: string; active?: boolean };
 type Rotation = { id: number; name: string | null; weekdays: number[]; workerIds: number[]; startDate: string; endDate?: string | null; notifyUpcoming?: boolean };
 type Holiday = { id: number; name: string | null; recurring: boolean };
 type CalendarEntryItem = { workerId: number | null; workerName: string | null; workerColor?: string | null; source: string; rotationId?: number; rotationName?: string; note?: string; notifyUpcoming?: boolean };
@@ -557,7 +557,7 @@ export default function CalendarPage() {
               onChange={e => { if (e.target.value) setEditWorkerIds(ids => [...ids, Number(e.target.value)]); }}
             >
               <option value="">— adicionar trabalhador —</option>
-              {workers.filter(w => !editWorkerIds.includes(w.id)).map(w => (
+              {workers.filter(w => w.active && !editWorkerIds.includes(w.id)).map(w => (
                 <option key={w.id} value={w.id}>{w.name}</option>
               ))}
             </select>
@@ -596,7 +596,7 @@ export default function CalendarPage() {
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <span style={{ fontSize: 22 }}>⭐</span>
-                <h3 style={{ margin: 0, fontSize: 17, color: '#fff', fontWeight: 700 }}>Feriado</h3>
+                <h2 style={{ margin: 0, fontSize: 17, color: '#fff', fontWeight: 700 }}>Feriado</h2>
               </div>
               <button onClick={() => setHolidayModalData(null)} style={{
                 background: 'rgba(255,255,255,0.2)', border: 'none', borderRadius: 6,
@@ -606,15 +606,13 @@ export default function CalendarPage() {
             {/* Content */}
             <div style={{ padding: '16px 20px' }}>
               <div style={{
-                padding: '14px 16px', background: '#daa52012',
-                border: '1px solid #daa52033', borderRadius: 8,
+                padding: '14px 16px', background: '#FF6A00',
+                border: '1px solid #ff8c0333', borderRadius: 8,
               }}>
-                <div style={{ fontSize: 16, fontWeight: 700, color: '#daa520' }}>{holidayModalData.name ?? 'Feriado'}</div>
-                <div style={{ fontSize: 13, color: PALETTE.textSecondary, marginTop: 6 }}>
-                  📅 {new Date(holidayModalData.date + 'T00:00:00Z').toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric', timeZone: 'UTC' })}
-                </div>
+                <div style={{ fontSize: 18, fontWeight: 700, color: '#ffffff' }}>{holidayModalData.name ?? 'Feriado'}</div>
+                <div style={{ fontSize: 15, color: '#ffffff', marginTop: 6 }}>📅 {new Date(holidayModalData.date + 'T00:00:00Z').toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric', timeZone: 'UTC' })}</div>
                 {holidayModalData.recurring && (
-                  <div style={{ fontSize: 12, color: PALETTE.textSecondary, marginTop: 4, fontStyle: 'italic' }}>Recorrente (anual)</div>
+                  <div style={{ fontSize: 12, color: '#ffffff', marginTop: 4, fontStyle: 'italic' }}>Recorrente (anual)</div>
                 )}
               </div>
             </div>
@@ -1030,7 +1028,7 @@ function RotationModal({ rotation, workers, onClose, onSaved, scheduleFrom }: {
           onChange={e => { if (e.target.value) addWorker(Number(e.target.value)); }}
         >
           <option value="">— adicionar trabalhador —</option>
-          {workers.filter(w => !workerIds.includes(w.id)).map(w => (
+          {workers.filter(w => w.active && !workerIds.includes(w.id)).map(w => (
             <option key={w.id} value={w.id}>{w.name}</option>
           ))}
         </select>

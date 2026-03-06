@@ -76,6 +76,11 @@ export default function DashboardLayout({ initialTab, dashboardContent }: {
         borderRight: `1px solid ${PALETTE.border}`,
         display: 'flex',
         flexDirection: 'column',
+        position: 'sticky',
+        top: 0,
+        height: '100vh',
+        overflow: 'auto',
+        flexShrink: 0,
       }}>
         <h2 style={{ margin: '0 0 4px 0', fontSize: 20, color: PALETTE.textPrimary }}>Plantões</h2>
         <p style={{ margin: '0 0 20px 0', fontSize: 12, color: PALETTE.textSecondary }}>

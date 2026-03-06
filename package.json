@@ -8,6 +8,7 @@
   "scripts": {
     "dev:backend": "dotenv -- npm --prefix backend run start:dev",
     "dev:frontend": "dotenv -- npm --prefix frontend run dev",
+    "dev:frontend:webpack": "dotenv -- npm --prefix frontend run dev:webpack",
     "dev": "dotenv -- concurrently \"npm:dev:backend\" \"npm:dev:frontend\"",
     "build:backend": "dotenv -- npm --prefix backend run build",
     "build:frontend": "dotenv -- npm --prefix frontend run build",
