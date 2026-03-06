@@ -374,7 +374,7 @@ export default function CalendarPage() {
                     }}
                   >
                       <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
-                        {/* Star badge for holidays */}
+                        {/* Feriado: estrela que abre o modal de informação */}
                         {holiday && isCurrentMonth && (
                           <span
                             data-holiday-star
@@ -396,11 +396,12 @@ export default function CalendarPage() {
                           </span>
                           {/* + button removed per request */}
                         </div>
+                      {/* Feriado: exibe o nome do feriado dentro da célula do calendário */}
                       {holiday && isCurrentMonth && (
                         <div style={{
                           padding: '1px 4px', margin: '1px 2px 0',
                           borderRadius: 3, textAlign: 'center',
-                          background: '#daa52033',
+                          background: '#FF6A00',
                           overflow: 'hidden',
                         }}>
                         <div title={holiday.name ?? 'Feriado'} style={{
@@ -686,7 +687,7 @@ function DayInfoPanel({ date, dayData, workers, rotations, onClose, isAdmin, onC
       {holiday && (
         <div style={{ background: `${PALETTE.warning}18`, border: `1px solid ${PALETTE.warning}44`, borderRadius: 6, padding: '8px 10px' }}>
           <div style={{ fontSize: 11, fontWeight: 600, color: PALETTE.warning, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 2 }}>Feriado</div>
-          <div style={{ fontSize: 14, fontWeight: 500, color: PALETTE.textPrimary }}>{holiday.name ?? 'Feriado'}</div>
+          <div style={{ fontSize: 14, fontWeight: 500, background: '#FF6A00', color: '#fff', padding: '6px 8px', borderRadius: 4 }}>{holiday.name ?? 'Feriado'}</div>
           {holiday.recurring && <div style={{ fontSize: 11, color: PALETTE.textSecondary, marginTop: 2 }}>Recorrente (anual)</div>}
         </div>
       )}

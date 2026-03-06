@@ -403,11 +403,11 @@ export default function VacationsPage() {
             <div style={{ padding: '16px 20px' }}>
               {holidayModalData.map(h => (
                 <div key={h.id} style={{
-                  padding: '14px 16px', background: '#daa52012',
-                  border: '1px solid #daa52033', borderRadius: 8, marginBottom: 8,
+                  padding: '14px 16px', background: '#ff8c00',
+                  border: '1px solid #ff8c0333', borderRadius: 8, marginBottom: 8,
                 }}>
-                  <div style={{ fontSize: 16, fontWeight: 700, color: '#daa520' }}>{h.name}</div>
-                  <div style={{ fontSize: 13, color: PALETTE.textSecondary, marginTop: 6 }}>📅 {fmtDate(h.date)}</div>
+                  <div style={{ fontSize: 18, fontWeight: 700, color: '#ffffff' }}>{h.name}</div>
+                  <div style={{ fontSize: 15, color: '#ffffff', marginTop: 6 }}>📅 {fmtDate(h.date)}</div>
                 </div>
               ))}
             </div>
@@ -653,7 +653,7 @@ export default function VacationsPage() {
                       title={hols.map(h => h.name).join(', ')}
                       style={{
                         position: 'absolute', right: 3, top: 2, zIndex: 2,
-                        fontSize: 15, cursor: 'pointer', lineHeight: 1,
+                        fontSize: 17, cursor: 'pointer', lineHeight: 1,
                         filter: 'drop-shadow(0 1px 3px rgba(218,165,32,0.6))',
                         transition: 'transform 0.2s ease, filter 0.2s ease',
                       }}
@@ -662,15 +662,15 @@ export default function VacationsPage() {
                     >⭐</span>
                   )}
                   {/* Date number */}
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '4px 6px 2px' }}>
-                    <span style={{ fontWeight: 600, fontSize: 18, color: isHoliday ? '#daa520' : undefined }}>{d.date.getDate()}</span>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '4px 6px 2px' }}>
+                    <span style={{ fontWeight: 600, fontSize: 20, color: isHoliday ? '#daa520' : undefined }}>{d.date.getDate()}</span>
                   </div>
                   {/* Holiday name label */}
                   {isHoliday && hols.map(h => (
                     <div key={`h-${h.id}`} title={h.name} style={{
-                      fontSize: 9, fontWeight: 700, padding: '1px 4px', margin: '0 3px 2px',
+                      fontSize: 11, fontWeight: 700, padding: '1px 4px', margin: '0 3px 2px',
                       borderRadius: 3, textAlign: 'center',
-                      background: '#daa52033', color: '#daa520',
+                      background: '#FF6A00', color: '#ffffff',
                       whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
                       letterSpacing: '0.03em', textTransform: 'uppercase',
                     }}>{h.name}</div>
