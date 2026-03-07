@@ -241,8 +241,8 @@ export default function VacationsPage() {
       if (!v.active) return false
       if (v.sold) return false
       if (filterWorkerId && v.workerId !== filterWorkerId) return false
-      const s = isoDate(new Date(v.startDate))
-      const e = isoDate(new Date(v.endDate))
+      const s = isoDate(parseLocalDate(v.startDate.slice(0, 10)))
+      const e = isoDate(parseLocalDate(v.endDate.slice(0, 10)))
       return iso >= s && iso <= e
     })
   }
@@ -302,8 +302,8 @@ export default function VacationsPage() {
   function startEdit(v: Vacation) {
     setEditId(v.id)
     setFormWorkerId(v.workerId)
-    setFormStart(isoDate(new Date(v.startDate)))
-    setFormEnd(isoDate(new Date(v.endDate)))
+    setFormStart(isoDate(parseLocalDate(v.startDate.slice(0, 10))))
+    setFormEnd(isoDate(parseLocalDate(v.endDate.slice(0, 10))))
     setFormDays(v.daysUsed)
     setFormSold(v.sold)
     setFormNote(v.note || '')
@@ -330,10 +330,10 @@ export default function VacationsPage() {
     .slice()
     .sort((a, b) => (b.pendingDays || 0) - (a.pendingDays || 0))
   const upcomingAll = filteredSummary.flatMap(s => s.upcoming.filter(v => !v.sold).map(v => ({ ...v, workerName: s.name, workerColor: s.color })))
-    .sort((a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime())
+    .sort((a, b) => parseLocalDate(a.startDate.slice(0, 10)).getTime() - parseLocalDate(b.startDate.slice(0, 10)).getTime())
     .slice(0, 10)
   const baseFilteredVacations = (filterWorkerId ? vacations.filter(v => v.workerId === filterWorkerId) : vacations)
-    .slice().sort((a, b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime())
+    .slice().sort((a, b) => parseLocalDate(b.startDate.slice(0, 10)).getTime() - parseLocalDate(a.startDate.slice(0, 10)).getTime())
 
   // Apply advanced filters (search text, date range, sold/active flags, days used)
   const displayedVacations = baseFilteredVacations.filter(v => {
@@ -352,12 +352,12 @@ export default function VacationsPage() {
     // date range (overlaps)
     if (filterStartDate) {
       const fStart = isoDate(parseLocalDate(filterStartDate))
-      const vEnd = isoDate(new Date(v.endDate))
+      const vEnd = isoDate(parseLocalDate(v.endDate.slice(0, 10)))
       if (vEnd < fStart) return false
     }
     if (filterEndDate) {
       const fEnd = isoDate(parseLocalDate(filterEndDate))
-      const vStart = isoDate(new Date(v.startDate))
+      const vStart = isoDate(parseLocalDate(v.startDate.slice(0, 10)))
       if (vStart > fEnd) return false
     }
 
@@ -487,8 +487,8 @@ export default function VacationsPage() {
       {selectedDay && (() => {
         const dayVacs = vacations.filter(v => {
           if (!v.active) return false
-          const s = isoDate(new Date(v.startDate))
-          const e = isoDate(new Date(v.endDate))
+          const s = isoDate(parseLocalDate(v.startDate.slice(0, 10)))
+          const e = isoDate(parseLocalDate(v.endDate.slice(0, 10)))
           const iso = isoDate(selectedDay)
           return iso >= s && iso <= e
         })
