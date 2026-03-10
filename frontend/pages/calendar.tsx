@@ -3,5 +3,5 @@ import type { GetServerSideProps } from 'next'
 export default function CalendarRedirect() { return null }
 
 export const getServerSideProps: GetServerSideProps = async () => ({
-  redirect: { destination: '/plantoes/calendar', permanent: true },
+  redirect: { destination: '/plantoes', permanent: true },
 })

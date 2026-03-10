@@ -9,7 +9,6 @@ import { API_BASE, jsonAuthHeaders, authHeaders } from '../../config/api'
 import WorkersContent from '../../components/shared/WorkersContent'
 import HolidaysContent from '../../components/shared/HolidaysContent'
 
-/* ── Types ── */
 type Worker = {
   id: number; name: string; color?: string; active: boolean;
   hireDate?: string; terminationDate?: string;

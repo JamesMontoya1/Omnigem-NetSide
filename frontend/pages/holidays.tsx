@@ -3,5 +3,5 @@ import type { GetServerSideProps } from 'next'
 export default function HolidaysRedirect() { return null }
 
 export const getServerSideProps: GetServerSideProps = async () => ({
-  redirect: { destination: '/plantoes?tab=holidays', permanent: true },
+  redirect: { destination: '/plantoes', permanent: true },
 })
