@@ -31,6 +31,8 @@ model Worker {
   email           String?   @unique
   color           String?
   active          Boolean   @default(true)
+  doesShifts      Boolean   @default(false) // Faz plantões?
+  doesTravel      Boolean   @default(false) // Faz viagens?
   hireDate        DateTime?
   terminationDate DateTime?
   createdAt       DateTime  @default(now())
@@ -38,6 +40,8 @@ model Worker {
   recurringPatterns RecurringPattern[]
   assignments       Assignment[]
   vacations         Vacation[]
+  trips             Trip[]
+  drivenTrips       Trip[]    @relation("DriverTrip")
 }
 
 // Feriados (datas em que geralmente não se escala)
@@ -126,25 +130,46 @@ model Sped {
   updatedAt        DateTime  @updatedAt
 }
 
+model City {
+  id        Int      @id @default(autoincrement())
+  name      String
+  state     String?
+  country   String?  @default("BR")
+  createdAt DateTime @default(now())
+  trips     Trip[]
+}
+
+model Vehicle {
+  id        Int      @id @default(autoincrement())
+  plate     String?  @unique
+  model     String?
+  notes     String?
+  createdAt DateTime @default(now())
+  trips     Trip[]
+}
+
 model Trip {
-  id                    Int      @id @default(autoincrement())
-  destination           String
-  vehicle               String?
-  date                  DateTime
-  client                String?
-  installationTraining  String?
-  mealExpense           Float?   @default(0)
-  fuelExpense           Float?   @default(0)
-  extraExpense          Float?   @default(0)
-  total                 Float?   @default(0)
-  kmDriven              Float?   @default(0)
-  costPerKm             Float?   @default(0)
-  profitPerKm           Float?   @default(0)
-  avgConsumption        Float?
-  remainingAutonomy     Float?
-  travelers             Int?
-  drivers               String?
-  notes                 String?
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
+  id                   Int      @id @default(autoincrement())
+  cityId               Int
+  city                 City     @relation(fields: [cityId], references: [id])
+  vehicleId            Int?
+  vehicle              Vehicle? @relation(fields: [vehicleId], references: [id])
+  date                 DateTime
+  client               String?
+  installationTraining Int      // 0 - Instalação; 1 - Treinamento
+  mealExpense          Decimal? @default(0)
+  fuelExpense          Decimal? @default(0)
+  extraExpense         Decimal? @default(0)
+  notesExtraExpense    String?
+  kmDriven             Decimal? @default(0)
+  costPerKm            Decimal? @default(0)
+  profitPerKm          Decimal? @default(0)
+  avgConsumption       Decimal?
+  remainingAutonomy    Decimal?
+  travelers            Worker[]
+  driverId             Int?
+  driver               Worker?  @relation("DriverTrip", fields: [driverId], references: [id])
+  note                 String?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
 }

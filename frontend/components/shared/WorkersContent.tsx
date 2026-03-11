@@ -41,6 +41,8 @@ type Worker = {
   active: boolean
   hireDate?: string | null
   terminationDate?: string | null
+  doesShifts?: boolean
+  doesTravel?: boolean
 }
 
 const COLOR_PRESETS = [
@@ -49,7 +51,7 @@ const COLOR_PRESETS = [
   '#E91E63', '#8BC34A', '#3F51B5', '#FFC107',
 ];
 
-export default function WorkersContent({ readOnly = false, showTitle = true }: { readOnly?: boolean; showTitle?: boolean }) {
+export default function WorkersContent({ readOnly = false, showTitle = true, onChange }: { readOnly?: boolean; showTitle?: boolean; onChange?: () => void }) {
   const [list, setList] = useState<Worker[]>([])
   const [name, setName] = useState('')
   const [color, setColor] = useState('')
@@ -59,6 +61,8 @@ export default function WorkersContent({ readOnly = false, showTitle = true }: {
   const [terminationDate, setTerminationDate] = useState('')
   const [showInactive, setShowInactive] = useState(false)
   const [sortActiveFirst, setSortActiveFirst] = useState(true)
+  const [doesShifts, setDoesShifts] = useState(false)
+  const [doesTravel, setDoesTravel] = useState(false)
 
   useEffect(() => { fetchWorkers() }, [])
 
@@ -82,6 +86,8 @@ export default function WorkersContent({ readOnly = false, showTitle = true }: {
     setColor('')
     setHireDate('')
     setTerminationDate('')
+    setDoesShifts(false)
+    setDoesTravel(false)
   }
 
   async function handleSubmit(e: any) {
@@ -92,6 +98,8 @@ export default function WorkersContent({ readOnly = false, showTitle = true }: {
       color: color || null,
       hireDate: hireDate || null,
       terminationDate: terminationDate || null,
+      doesShifts,
+      doesTravel,
     }
 
     const isEdit = editingId != null
@@ -114,7 +122,8 @@ export default function WorkersContent({ readOnly = false, showTitle = true }: {
       addToast(isEdit ? 'Trabalhador atualizado' : 'Trabalhador criado', 'success')
       resetForm()
       setIsModalOpen(false)
-      fetchWorkers()
+      await fetchWorkers()
+      onChange?.()
     } catch (e) {
       console.error(e)
       addToast('Erro de rede ao salvar trabalhador', 'error')
@@ -150,7 +159,8 @@ export default function WorkersContent({ readOnly = false, showTitle = true }: {
         // clear color in the modal immediately
         setColor('')
       }
-      fetchWorkers()
+      await fetchWorkers()
+      onChange?.()
     } catch (e) {
       console.error(e)
       addToast('Erro de rede ao demitir trabalhador', 'error')
@@ -174,7 +184,8 @@ export default function WorkersContent({ readOnly = false, showTitle = true }: {
         return
       }
       addToast('Trabalhador apagado', 'success')
-      fetchWorkers()
+      await fetchWorkers()
+      onChange?.()
     } catch (e) {
       console.error(e)
       addToast('Erro de rede ao apagar trabalhador', 'error')
@@ -193,6 +204,8 @@ export default function WorkersContent({ readOnly = false, showTitle = true }: {
     setColor(worker.color || '')
     setHireDate(worker.hireDate ? worker.hireDate.slice(0, 10) : '')
     setTerminationDate(worker.terminationDate ? worker.terminationDate.slice(0, 10) : '')
+    setDoesShifts(!!worker.doesShifts)
+    setDoesTravel(!!worker.doesTravel)
     setIsModalOpen(true)
   }
 
@@ -302,6 +315,24 @@ export default function WorkersContent({ readOnly = false, showTitle = true }: {
               {editingId ? 'Editar Trabalhador' : 'Adicionar Trabalhador'}
             </h3>
             <form onSubmit={handleSubmit} style={{ display: 'grid', gap: 12 }}>
+                            <div style={{ display: 'flex', gap: 16 }}>
+                              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600, fontSize: 13, color: PALETTE.textSecondary }}>
+                                <input
+                                  type="checkbox"
+                                  checked={doesShifts}
+                                  onChange={e => setDoesShifts(e.target.checked)}
+                                />
+                                Faz plantões?
+                              </label>
+                              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600, fontSize: 13, color: PALETTE.textSecondary }}>
+                                <input
+                                  type="checkbox"
+                                  checked={doesTravel}
+                                  onChange={e => setDoesTravel(e.target.checked)}
+                                />
+                                Faz viagens?
+                              </label>
+                            </div>
               <div>
                 <label style={{ display: 'block', fontWeight: 600, fontSize: 13, color: PALETTE.textSecondary, marginBottom: 4 }}>Nome</label>
                 <input placeholder="Nome do trabalhador" value={name} onChange={(e) => setName(e.target.value)} required style={inputStyle} />

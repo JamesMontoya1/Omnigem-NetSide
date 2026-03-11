@@ -4,13 +4,17 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
 
+
 class CreateWorkerDto {
   name: string;
   email?: string;
   color?: string;
   hireDate?: string;
   terminationDate?: string;
+  doesShifts?: boolean;
+  doesTravel?: boolean;
 }
+
 
 class UpdateWorkerDto {
   name?: string;
@@ -19,6 +23,8 @@ class UpdateWorkerDto {
   active?: boolean;
   hireDate?: string;
   terminationDate?: string;
+  doesShifts?: boolean;
+  doesTravel?: boolean;
 }
 
 @Controller('workers')

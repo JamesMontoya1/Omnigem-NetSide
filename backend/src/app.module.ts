@@ -9,10 +9,13 @@ import { RecurringPatternsModule } from './recurring-patterns/recurring-patterns
 import { AssignmentsModule } from './assignments/assignments.module';
 import { RotationsModule } from './rotations/rotations.module';
 import { VacationsModule } from './vacations/vacations.module';
+import { TripsModule } from './trips/trips.module';
+import { CitiesModule } from './cities/cities.module';
+import { VehiclesModule } from './vehicles/vehicles.module';
 import { AppController } from './app.controller';
 
 @Module({
-  imports: [PrismaModule, UsersModule, AuthModule, WorkersModule, HolidaysModule, RecurringPatternsModule, AssignmentsModule, RotationsModule, VacationsModule],
+  imports: [PrismaModule, UsersModule, AuthModule, WorkersModule, HolidaysModule, RecurringPatternsModule, AssignmentsModule, RotationsModule, VacationsModule, TripsModule, CitiesModule, VehiclesModule],
   controllers: [AppController],
   providers: [PrismaService],
 })
