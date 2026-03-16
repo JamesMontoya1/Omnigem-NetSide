@@ -9,6 +9,7 @@ class CreateTripDto {
   vehicleId?: number
   date!: string
   client?: string
+  clients?: { name?: string; price?: number; info?: string }[]
   serviceTypeId!: number
   price?: number
   mealExpense?: number
@@ -32,6 +33,7 @@ class UpdateTripDto {
   vehicleId?: number
   date?: string
   client?: string
+  clients?: { name?: string; price?: number; info?: string }[]
   serviceTypeId?: number
   price?: number
   mealExpense?: number

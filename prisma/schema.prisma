@@ -201,13 +201,14 @@ model Trip {
   vehicleId            Int?
   vehicle              Vehicle? @relation(fields: [vehicleId], references: [id])
   date                 DateTime // Data de início da viagem
-  client               String?
+  client               String[] // Pode ter múltiplos clientes (ex: "Cliente A", "Cliente B")
   serviceTypeId        Int
   serviceType          ServiceType @relation(fields: [serviceTypeId], references: [id])
   mealExpense          Decimal? @default(0)
   fuelExpense          Decimal? @default(0)
   extraExpense         Decimal? @default(0)
-  price                Decimal? @default(0)
+  price                Decimal[] @default([]) // Pode ter múltiplos preços (ex: para diferentes clientes ou serviços)
+  informationPrice     String[] @default([]) // Detalhes sobre cada preço (ex: "Preço para Cliente A", "Preço para Cliente B")
   notesExtraExpense    String?
   kmDriven             Decimal? @default(0)
   costPerKm            Decimal? @default(0)

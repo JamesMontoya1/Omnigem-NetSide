@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
+import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import { useRouter } from 'next/router'
 import { API_BASE, authHeaders, jsonAuthHeaders } from '../../config/api'
 import {
@@ -16,7 +16,9 @@ type Trip = {
   id: number; date: string; cityId: number; city?: City; vehicleId?: number; vehicle?: Vehicle
   client?: string; serviceTypeId: number
   serviceType?: { id: number; name: string; code?: string }
+  // backwards-compatible single price/client OR new array of clients/prices
   price?: number
+  clients?: { name: string; price?: number; info?: string }[]
   mealExpense?: number; fuelExpense?: number; extraExpense?: number; notesExtraExpense?: string
   kmDriven?: number; costPerKm?: number; profitPerKm?: number
   avgConsumption?: number; remainingAutonomy?: number
@@ -29,6 +31,8 @@ type ExpenseCategory = { id: number; name: string; description?: string }
 
 const EMPTY_FORM = {
   date: '', cityId: '', vehicleId: '', client: '', serviceTypeId: '',
+  // multiple clients (each has name, price, info). keep single `client` and `price` for BC.
+  clients: [{ name: '', price: '', info: '' }],
   mealExpense: '', fuelExpense: '', extraExpense: '', notesExtraExpense: '', price: '',
   kmDriven: '', costPerKm: '', profitPerKm: '', avgConsumption: '', remainingAutonomy: '',
   total: '',
@@ -143,6 +147,10 @@ export default function Trips() {
   const [showCategories, setShowCategories] = useState(false)
 
   const [hoveredRow, setHoveredRow] = useState<number | null>(null)
+  const [expandedIds, setExpandedIds] = useState<number[]>([])
+
+  const [detailsTrip, setDetailsTrip] = useState<Trip | null>(null)
+  const [showDetails, setShowDetails] = useState(false)
 
   const [showServiceTypeModal, setShowServiceTypeModal] = useState(false)
   const [serviceTypeForm, setServiceTypeForm] = useState({ name: '', code: '' })
@@ -209,8 +217,31 @@ export default function Trips() {
     const iso = isoDate(date)
     return trips.filter(t => {
       const start = isoDate(new Date(t.date))
-      return iso === start
+      return iso === start && isTripVisible(t)
     })
+  }
+
+  function isTripVisible(t: Trip) {
+    if (filterCity && t.cityId !== Number(filterCity)) return false
+    if (filterVehicle && t.vehicleId !== Number(filterVehicle)) return false
+    if (filterWorker) {
+      const wid = Number(filterWorker)
+      const inDrivers = (t.drivers || []).some((w: any) => w.id === wid)
+      const inTravelers = (t.travelers || []).some((w: any) => w.id === wid)
+      if (!inDrivers && !inTravelers) return false
+    }
+    if (filterType !== '' && t.serviceTypeId !== Number(filterType)) return false
+    if (filterStart) {
+      const s = new Date(filterStart); s.setHours(0,0,0,0)
+      const td = new Date(t.date); td.setHours(0,0,0,0)
+      if (td.getTime() < s.getTime()) return false
+    }
+    if (filterEnd) {
+      const e = new Date(filterEnd); e.setHours(0,0,0,0)
+      const td = new Date(t.date); td.setHours(0,0,0,0)
+      if (td.getTime() > e.getTime()) return false
+    }
+    return true
   }
 
   const fetchTrips = useCallback(async () => {
@@ -306,15 +337,38 @@ export default function Trips() {
     setEditingTrip(t)
     const kmDriven = t.kmDriven ?? 0
     const totalExp = (Number(t.mealExpense) || 0) + (Number(t.fuelExpense) || 0) + (Number(t.extraExpense) || 0)
-    const priceVal = Number(t.price) || 0
+    // map existing trip clients into form.clients
+    let clientsForForm: any[] = []
+    // new-style: backend may return parallel arrays `client`, `price`, `informationPrice`
+    if ((t as any).client && Array.isArray((t as any).client)) {
+      const names = (t as any).client as any[]
+      const prices = Array.isArray((t as any).price) ? (t as any).price as any[] : []
+      const infos = Array.isArray((t as any).informationPrice) ? (t as any).informationPrice as any[] : []
+      clientsForForm = names.map((name: any, idx: number) => ({
+        name: name ?? '',
+        price: prices[idx] != null ? String(prices[idx]) : '',
+        info: infos[idx] ?? ''
+      }))
+    } else if ((t as any).clients && Array.isArray((t as any).clients)) {
+      clientsForForm = (t as any).clients.map((c: any) => ({ name: c.name ?? '', price: c.price != null ? String(c.price) : '', info: c.info ?? '' }))
+    } else {
+      clientsForForm = [{ name: typeof (t as any).client === 'string' ? (t as any).client : '', price: t.price != null ? String(t.price) : '', info: '' }]
+    }
+
+    // compute price from clients (if any) or fallback to single numeric price
+    const computedPriceVal = clientsForForm.length > 0
+      ? clientsForForm.reduce((s: number, c: any) => s + (Number(c.price) || 0), 0)
+      : (Number(t.price) || 0)
     const computedCost = kmDriven > 0 ? (totalExp / kmDriven) : undefined
-    const computedProfit = kmDriven > 0 ? ((priceVal - totalExp) / kmDriven) : undefined
-    const computedTotalValue = priceVal - totalExp
+    const computedProfit = kmDriven > 0 ? ((computedPriceVal - totalExp) / kmDriven) : undefined
+    const computedTotalValue = computedPriceVal - totalExp
+
     setForm({
       date: toDateInput(t.date),
       cityId: String(t.cityId),
       vehicleId: t.vehicleId ? String(t.vehicleId) : '',
       client: t.client ?? '',
+      clients: clientsForForm,
       serviceTypeId: t.serviceTypeId ? String(t.serviceTypeId) : '',
       price: t.price != null ? String(t.price) : '',
       mealExpense: t.mealExpense != null ? String(t.mealExpense) : '',
@@ -344,7 +398,10 @@ export default function Trips() {
     const fuel = Number(form.fuelExpense) || 0
     const extra = Number(form.extraExpense) || 0
     const km = Number(form.kmDriven) || 0
-    const price = Number(form.price) || 0
+    // price may be per-client; sum clients if available
+    const price = (form as any).clients && Array.isArray((form as any).clients)
+      ? (form as any).clients.reduce((s: number, c: any) => s + (Number(c.price) || 0), 0)
+      : Number(form.price) || 0
     const computedTotal = price - (meal + fuel + extra)
     const totalDisplay = String(Number(computedTotal).toFixed(2))
     let costDisplay = ''
@@ -367,7 +424,9 @@ export default function Trips() {
     const fuel = Number(form.fuelExpense) || 0
     const extra = Number(form.extraExpense) || 0
     const km = Number(form.kmDriven) || 0
-    const price = Number(form.price) || 0
+    const price = (form as any).clients && Array.isArray((form as any).clients)
+      ? (form as any).clients.reduce((s: number, c: any) => s + (Number(c.price) || 0), 0)
+      : Number(form.price) || 0
     const computedTotal = price - (meal + fuel + extra)
     const displayTotal = String(Number(computedTotal).toFixed(2))
     if ((form.total || '') !== displayTotal) setForm(f => ({ ...f, total: displayTotal }))
@@ -380,7 +439,7 @@ export default function Trips() {
       const displayProfit = String(Number(computedProfit).toFixed(2))
       if (form.profitPerKm !== displayProfit) setForm(f => ({ ...f, profitPerKm: displayProfit }))
     }
-  }, [form.mealExpense, form.fuelExpense, form.extraExpense, form.kmDriven, form.price, costEdited, showTripModal, editingTrip?.completed])
+  }, [form.mealExpense, form.fuelExpense, form.extraExpense, form.kmDriven, costEdited, showTripModal, editingTrip?.completed, JSON.stringify((form as any).clients)])
 
   async function handleSaveTrip(e: React.FormEvent) {
     e.preventDefault()
@@ -389,7 +448,17 @@ export default function Trips() {
     const extra = num(form.extraExpense) || 0
     const km = num(form.kmDriven) || 0
     const computedCostPerKm = km > 0 ? (meal + fuel + extra) / km : undefined
-    const computedProfitPerKm = km > 0 ? ((num(form.price) || 0 - (meal + fuel + extra)) / km) : undefined
+    const totalPriceForCalc = (form as any).clients && Array.isArray((form as any).clients)
+      ? (form as any).clients.reduce((s: number, c: any) => s + (Number(c.price) || 0), 0)
+      : (num(form.price) || 0)
+    const computedProfitPerKm = km > 0 ? ((totalPriceForCalc - (meal + fuel + extra)) / km) : undefined
+    const toIsoSafe = (v: any) => {
+      if (!v) return null
+      const candidate = (typeof v === 'string' && !v.includes('T')) ? `${v}T00:00:00` : v
+      const d = new Date(candidate)
+      return isNaN(d.getTime()) ? null : d.toISOString()
+    }
+
     const payload: any = {
       date: form.date,
       cityId: Number(form.cityId),
@@ -398,12 +467,24 @@ export default function Trips() {
       serviceTypeId: Number(form.serviceTypeId),
       travelerIds: form.travelerIds, driverIds: form.driverIds,
       note: form.note || null,
-      endDate: form.endDate ? new Date(form.endDate + 'T00:00:00').toISOString() : null,
+      endDate: toIsoSafe(form.endDate),
     }
 
-    // apenas inclui campos de despesas/quilometragem se a viagem estiver concluída
-    if (editingTrip?.completed) {
+    const clients = (form as any).clients && Array.isArray((form as any).clients)
+      ? (form as any).clients.map((c: any) => ({
+        name: Array.isArray(c.name) ? c.name.join(', ') : (c.name ?? null),
+        price: num(c.price) ?? null,
+        info: Array.isArray(c.info) ? c.info.join(', ') : (c.info ?? null),
+      }))
+      : (form.client ? [{ name: form.client || null, price: num(form.price) ?? null, info: (form as any).informationPrice || null }] : [])
+    if (clients.length) {
+      payload.clients = clients
+      payload.price = clients.reduce((s: number, c: any) => s + (c.price || 0), 0)
+    } else {
       payload.price = num(form.price) ?? null
+    }
+
+    if (editingTrip?.completed) {
       payload.mealExpense = num(form.mealExpense)
       payload.fuelExpense = num(form.fuelExpense)
       payload.extraExpense = num(form.extraExpense)
@@ -438,7 +519,14 @@ export default function Trips() {
 
   async function handleMarkComplete(t: Trip) {
     try {
-      const res = await fetch(`${API_BASE}/trips/${t.id}/complete`, { method: 'PUT', headers: jsonAuthHeaders() })
+      // ensure endDate uses the trip's start date at local midnight to avoid timezone shifts
+      const dateOnly = toDateInput(t.date)
+      const endDateIso = new Date(parseLocalDate(dateOnly)).toISOString()
+      const res = await fetch(`${API_BASE}/trips/${t.id}`, {
+        method: 'PUT',
+        headers: jsonAuthHeaders(),
+        body: JSON.stringify({ completed: true, endDate: endDateIso })
+      })
       if (!res.ok) throw new Error('Erro')
       addToast('Viagem marcada como completa', 'success')
       await fetchTrips()
@@ -583,18 +671,7 @@ export default function Trips() {
   }
 
   const filtered = (() => {
-    const base = trips.filter(t => {
-      if (filterCity && t.cityId !== Number(filterCity)) return false
-      if (filterVehicle && t.vehicleId !== Number(filterVehicle)) return false
-      if (filterWorker) {
-        const wid = Number(filterWorker)
-        const hasTraveler = Array.isArray(t.travelers) && t.travelers.some(w => w.id === wid)
-        const hasDriver = Array.isArray(t.drivers) && t.drivers.some(w => w.id === wid)
-        if (!hasTraveler && !hasDriver) return false
-      }
-      if (filterType !== '' && t.serviceTypeId !== Number(filterType)) return false
-      return true
-    })
+    const base = trips.filter(isTripVisible)
 
     const today = new Date()
     today.setHours(0, 0, 0, 0)
@@ -656,19 +733,11 @@ export default function Trips() {
         <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 800 }}>
           <thead>
             <tr style={{ textAlign: 'left', borderBottom: `2px solid ${PALETTE.border}` }}>
-              <th style={{ padding: '10px 8px', width: 160, position: 'sticky', top: 0, background: PALETTE.cardBg, zIndex: 3 }}>Data</th>
-              <th style={{ padding: '10px 8px', width: 160, position: 'sticky', top: 0, background: PALETTE.cardBg, zIndex: 3 }}>Tipo</th>
-              <th style={{ padding: '10px 8px', position: 'sticky', top: 0, background: PALETTE.cardBg, zIndex: 3 }}>Cidade</th>
+              <th style={{ padding: '10px 8px', width: 260, position: 'sticky', top: 0, background: PALETTE.cardBg, zIndex: 3 }}>Dia / Data / Tipo</th>
+              <th style={{ padding: '10px 8px', position: 'sticky', top: 0, background: PALETTE.cardBg, zIndex: 3 }}>Destino</th>
               <th style={{ padding: '10px 8px', position: 'sticky', top: 0, background: PALETTE.cardBg, zIndex: 3 }}>Veículo</th>
-              <th style={{ padding: '10px 8px', position: 'sticky', top: 0, background: PALETTE.cardBg, zIndex: 3 }}>Passageiros</th>
-              <th style={{ padding: '10px 8px', position: 'sticky', top: 0, background: PALETTE.cardBg, zIndex: 3 }}>Motoristas</th>
-              {canEdit && (
-                <>
-                  <th style={{ padding: '10px 8px', textAlign: 'right', width: 140, position: 'sticky', top: 0, background: PALETTE.cardBg, zIndex: 3 }}>Custo/km (R$)</th>
-                  <th style={{ padding: '10px 8px', textAlign: 'right', width: 140, position: 'sticky', top: 0, background: PALETTE.cardBg, zIndex: 3 }}>Lucro/km (R$)</th>
-                  <th style={{ padding: '10px 8px', textAlign: 'right', width: 200, position: 'sticky', top: 0, background: PALETTE.cardBg, zIndex: 3 }}>Custo Total</th>
-                </>
-              )}
+              <th style={{ padding: '10px 8px', position: 'sticky', top: 0, background: PALETTE.cardBg, zIndex: 3 }}>Equipe</th>
+              <th style={{ padding: '10px 8px', width: 120, position: 'sticky', top: 0, background: PALETTE.cardBg, zIndex: 3, textAlign: 'right' }}>Ações</th>
             </tr>
           </thead>
           <tbody>
@@ -676,44 +745,94 @@ export default function Trips() {
               const totalExpense = (Number(t.mealExpense) || 0) + (Number(t.fuelExpense) || 0) + (Number(t.extraExpense) || 0)
               const expenseStr = money(totalExpense)
               const km = Number(t.kmDriven) || 0
+              // normalize clients into array of { name, price, info }
+              const clientsArr: { name: string; price: number; info?: string }[] = ((): any[] => {
+                if ((t as any).clients && Array.isArray((t as any).clients)) {
+                  return (t as any).clients.map((c: any) => ({ name: c.name ?? '', price: Number(c.price) || 0, info: c.info ?? '' }))
+                }
+                if ((t as any).client && Array.isArray((t as any).client)) {
+                  const names = (t as any).client as any[]
+                  const prices = Array.isArray((t as any).price) ? (t as any).price as any[] : []
+                  const infos = Array.isArray((t as any).informationPrice) ? (t as any).informationPrice as any[] : []
+                  return names.map((name: any, idx: number) => ({ name: name ?? '', price: prices[idx] != null ? Number(prices[idx]) : 0, info: infos[idx] ?? '' }))
+                }
+                return [{ name: typeof (t as any).client === 'string' ? (t as any).client : '', price: Number(t.price) || 0, info: '' }]
+              })()
+              const priceVal = clientsArr.reduce((s: number, c: any) => s + (Number(c.price) || 0), 0)
               const computedCostPerKm = t.costPerKm != null ? Number(t.costPerKm) : (km > 0 ? totalExpense / km : 0)
               const costPerKmStr = money(computedCostPerKm)
-              const computedProfitPerKm = t.profitPerKm != null ? Number(t.profitPerKm) : (km > 0 ? ((Number(t.price) || 0 - totalExpense) / km) : 0)
+              const computedProfitPerKm = t.profitPerKm != null ? Number(t.profitPerKm) : (km > 0 ? ((priceVal - totalExpense) / km) : 0)
               const profitPerKmStr = money(computedProfitPerKm)
-              const priceVal = Number(t.price) || 0
               const computedTotalValue = priceVal - totalExpense
               const totalCostStr = money(computedTotalValue)
               const rowBg = hoveredRow === t.id ? PALETTE.hoverBg : (i % 2 === 0 ? PALETTE.cardBg : PALETTE.hoverBg)
               return (
-                <tr key={t.id} onClick={() => canEdit ? openEditTrip(t) : undefined} onMouseEnter={() => setHoveredRow(t.id)} onMouseLeave={() => setHoveredRow(null)} style={{ cursor: canEdit ? 'pointer' : 'default', borderBottom: `1px solid ${PALETTE.border}`, background: rowBg, transition: 'background 120ms ease' }}>
-                  <td style={{ padding: 10, verticalAlign: 'top', color: PALETTE.textSecondary, width: 160, ...cellSingleLine }}>
-                    <div style={{ ...cellSingleLine }}>📅 {new Date(t.date).toLocaleDateString('pt-BR')}</div>
-                  </td>
-                  <td style={{ padding: 10, verticalAlign: 'top', maxWidth: 180, ...cellSingleLine }}>
-                    <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 6, color: '#fff', background: PALETTE.primary, fontWeight: 600 }}>
-                      {t.client ? `${t.client} — ${t.serviceType?.name ?? '?'}` : (t.serviceType?.name ?? '?')}
-                    </span>
+                <React.Fragment key={t.id}>
+                <tr onClick={() => canEdit ? openEditTrip(t) : undefined} onMouseEnter={() => setHoveredRow(t.id)} onMouseLeave={() => setHoveredRow(null)} style={{ cursor: canEdit ? 'pointer' : 'default', borderBottom: `1px solid ${PALETTE.border}`, background: rowBg, transition: 'background 120ms ease' }}>
+                  <td style={{ padding: 10, verticalAlign: 'top', color: PALETTE.textSecondary, width: 260, ...cellSingleLine }}>
+                    <div style={{ fontWeight: 700 }}>{WEEKDAYS[new Date(t.date).getDay()]} - {new Date(t.date).toLocaleDateString('pt-BR')} - {t.serviceType?.name ?? 'Viagem'}</div>
+                    <div style={{ fontSize: 12, color: PALETTE.textSecondary, marginTop: 6 }}>
+                      {clientsArr.length === 0 ? '—' : (() => {
+                        const c = clientsArr[0]
+                        return (
+                          <span style={{ display: 'inline-block', marginRight: 8 }}>
+                            <strong style={{ fontWeight: 600 }}>{c.name || '—'}</strong>
+                            {c.price ? <span style={{ marginLeft: 6, color: PALETTE.textSecondary }}>— {money(c.price)}</span> : null}
+                            {c.info ? <span style={{ marginLeft: 6, color: PALETTE.textSecondary }}>({truncate(c.info, 40)})</span> : null}
+                            {clientsArr.length > 1 ? <span style={{ marginLeft: 8, color: PALETTE.textSecondary }}>+{clientsArr.length - 1}</span> : null}
+                          </span>
+                        )
+                      })()}
+                    </div>
                   </td>
                   <td style={{ padding: 10, verticalAlign: 'top', maxWidth: 300, ...cellSingleLine }}>
                     <div style={{ fontWeight: 700, minWidth: 140, ...cellSingleLine }}>{t.city?.name ?? '—'}</div>
                   </td>
                   <td style={{ padding: 10, verticalAlign: 'top', color: PALETTE.textSecondary, maxWidth: 220, ...cellSingleLine }}>{t.vehicle ? `${t.vehicle.model ?? '—'} ${t.vehicle.plate ? `(${t.vehicle.plate})` : ''}` : '—'}</td>
-                  <td style={{ padding: 10, verticalAlign: 'top', color: PALETTE.textSecondary, maxWidth: 220, ...cellSingleLine }}>{t.travelers?.map((w: Worker) => w.name).join(', ') || '—'}</td>
-                  <td style={{ padding: 10, verticalAlign: 'top', color: PALETTE.textSecondary, maxWidth: 220, ...cellSingleLine }}>{t.drivers?.map((w: Worker) => w.name).join(', ') || '—'}</td>
-                  {canEdit && (
-                    <>
-                      <td style={{ padding: 10, verticalAlign: 'top', textAlign: 'right', color: PALETTE.textSecondary, width: 140, ...cellSingleLine }}>
-                        <div style={{ fontWeight: 600, color: costPerKmStr ? PALETTE.textPrimary : PALETTE.textSecondary }}>{costPerKmStr || '-'}</div>
-                      </td>
-                      <td style={{ padding: 10, verticalAlign: 'top', textAlign: 'right', color: PALETTE.textSecondary, width: 140, ...cellSingleLine }}>
-                        <div style={{ fontWeight: 600, color: profitPerKmStr ? PALETTE.textPrimary : PALETTE.textSecondary }}>{profitPerKmStr || '-'}</div>
-                      </td>
-                      <td style={{ padding: 10, verticalAlign: 'top', textAlign: 'right', minWidth: 180, ...cellSingleLine }}>
-                        <div style={{ fontWeight: 600, color: totalCostStr ? PALETTE.warning : PALETTE.textSecondary }}>{totalCostStr || expenseStr || '-'}</div>
-                      </td>
-                    </>
-                  )}
+                  <td style={{ padding: 10, verticalAlign: 'top', color: PALETTE.textSecondary, maxWidth: 420, ...cellSingleLine }}>{Array.from(new Set([...(t.drivers || []).map((w: any) => w.name), ...(t.travelers || []).map((w: any) => w.name)])).join(', ') || '—'}</td>
+                  
+                  <td style={{ padding: 10, verticalAlign: 'top', textAlign: 'right', width: 120 }} onClick={e => e.stopPropagation()}>
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); setExpandedIds(ids => ids.includes(t.id) ? ids.filter(x => x !== t.id) : [...ids, t.id]) }}
+                      style={btnSmall as any}
+                    >
+                      {expandedIds.includes(t.id) ? 'Ocultar detalhes' : 'Ver detalhes'}
+                    </button>
+                  </td>
                 </tr>
+                {expandedIds.includes(t.id) && (
+                  <tr key={`exp-${t.id}`} style={{ background: PALETTE.backgroundSecondary }}>
+                    <td colSpan={5} style={{ padding: 12, borderBottom: `1px solid ${PALETTE.border}` }}>
+                      <div style={{ marginTop: 8 }}>
+                        <strong>Clientes:</strong>
+                        <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                          {clientsArr.map((c, idx) => (
+                            <div key={idx} style={{ display: 'flex', gap: 12 }}>
+                              <div style={{ minWidth: 200, display: 'flex', alignItems: 'center', gap: 8 }}>
+                                <strong>{c.name || '—'}</strong>
+                                <span style={{ color: PALETTE.textSecondary }}>{money(c.price) || '-'}</span>
+                                {c.info ? <span style={{ color: PALETTE.textSecondary }}>— {truncate(c.info, 80)}</span> : null}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div style={{ height: 1, background: PALETTE.border, margin: '8px 0' }} />
+
+                      <div style={{ marginTop: 8 }}>
+                        <strong>Valores por km:</strong>
+                        <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                          <div style={{ fontSize: 13 }}><strong>Custo/km (R$):</strong> {costPerKmStr || '-'}</div>
+                          <div style={{ fontSize: 13 }}><strong>Lucro/km (R$):</strong> {profitPerKmStr || '-'}</div>
+                          <div style={{ fontSize: 13 }}><strong>Custo total:</strong> {totalCostStr || expenseStr || '-'}</div>
+                        </div>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+                </React.Fragment>
               )
             })}
           </tbody>
@@ -747,7 +866,7 @@ export default function Trips() {
             📅 Calendário
           </button>
           {canEdit && <button onClick={openNewTrip} style={{ ...btnNav, background: PALETTE.success, color: '#fff', border: 'none' }}>+ Nova Viagem</button>}
-          {/** Filtro global por trabalhador (aplicado a todas as listas de viagens) */}
+          {/** Filtro global por trabalhador */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 8 }}>
             <select
               value={filterWorker}
@@ -832,7 +951,7 @@ export default function Trips() {
                       return arr.map(y => <option key={y} value={y}>{y}</option>)
                     })()}
                   </select>
-                </div>
+                  </div>
                 <button
                   onClick={() => setCalMonth(new Date(new Date().getFullYear(), new Date().getMonth(), 1))}
                   style={{ ...btnSmall, minWidth: 72 }}
@@ -841,6 +960,20 @@ export default function Trips() {
                   Hoje
                 </button>
                 <button onClick={() => setCalMonth(new Date(calMonth.getFullYear(), calMonth.getMonth() + 1, 1))} style={btnSmall}>▶</button>
+                  <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginLeft: 12 }} title="Legenda de cores">
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <div style={{ width: 12, height: 12, borderRadius: 3, background: PALETTE.success }} />
+                      <div style={{ fontSize: 12, color: PALETTE.textSecondary }}>Concluída</div>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <div style={{ width: 12, height: 12, borderRadius: 3, background: PALETTE.warning }} />
+                      <div style={{ fontSize: 12, color: PALETTE.textSecondary }}>Programada</div>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <div style={{ width: 12, height: 12, borderRadius: 3, background: PALETTE.error }} />
+                      <div style={{ fontSize: 12, color: PALETTE.textSecondary }}>Não concluído</div>
+                    </div>
+                  </div>
                 <div style={{ flex: 1 }} />
               </div>
               <div style={{ display: 'flex', gap: 12, height: '92%' }}>
@@ -884,14 +1017,27 @@ export default function Trips() {
                                   style={{
                                     display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                                     fontSize: 13, padding: '1px 4px', borderRadius: 3, marginBottom: 1,
-                                    background: `${PALETTE.primary}33`, color: PALETTE.textPrimary,
                                     whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', cursor: 'pointer'
                                   }}
                                 >
-                                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', display: 'block', maxWidth: 'calc(100% - 24px)' }}>{t.serviceType?.name ?? 'Viagem'}</span>
-                                  {showMore && (
-                                    <span style={{ marginLeft: 6, fontSize: 11, color: '#ffffff', flexShrink: 0 }}>+{moreCount}</span>
-                                  )}
+                                  {
+                                    (() => {
+                                      const today = new Date()
+                                      today.setHours(0, 0, 0, 0)
+                                      const tripDay = new Date(t.date)
+                                      tripDay.setHours(0, 0, 0, 0)
+                                      const eventColor = t.completed ? PALETTE.success : (tripDay.getTime() >= today.getTime() ? PALETTE.warning : PALETTE.error)
+                                      const textColor = eventColor === PALETTE.warning ? '#000000' : '#ffffff'
+                                      return (
+                                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', background: eventColor, color: textColor, borderRadius: 3, padding: '2px 6px' }}>
+                                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', display: 'block', maxWidth: 'calc(100% - 24px)' }}>{t.serviceType?.name ?? 'Viagem'}</span>
+                                          {showMore && (
+                                            <span style={{ marginLeft: 6, fontSize: 11, color: textColor, flexShrink: 0 }}>+{moreCount}</span>
+                                          )}
+                                        </div>
+                                      )
+                                    })()
+                                  }
                                 </div>
                               )
                             })}
@@ -905,12 +1051,7 @@ export default function Trips() {
                 {/* viagens concluidas/pendentes */}
                 <div style={{ width: 420, minWidth: 240, maxHeight: '100%', overflowY: 'auto' }}>
                   {(() => {
-                    const base = trips.filter(t => {
-                      if (filterCity && t.cityId !== Number(filterCity)) return false
-                      if (filterVehicle && t.vehicleId !== Number(filterVehicle)) return false
-                      if (filterType !== '' && t.serviceTypeId !== Number(filterType)) return false
-                      return true
-                    })
+                    const base = trips.filter(isTripVisible)
                     const list = sidebarFilter === 'completed' ? base.filter(t => t.completed) : base.filter(t => !t.completed)
                     return (
                       <div style={{ padding: 8, height: '100%', borderRadius: 8, background: PALETTE.backgroundSecondary, border: `1px solid ${PALETTE.border}` }}>
@@ -933,7 +1074,7 @@ export default function Trips() {
                               style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px', borderRadius: 6, background: PALETTE.cardBg, marginBottom: 6, cursor: canEdit ? 'pointer' : 'default', border: `1px solid ${PALETTE.border}`, transition: 'transform 200ms ease, box-shadow 200ms ease' }}
                             >
                               <div style={{ minWidth: 0 }}>
-                                <div style={{ fontWeight: 700, fontSize: 13 }}>{(t.serviceType?.name ?? 'Viagem')}{t.client ? ` - ${t.client}` : ''}</div>
+                                <div style={{ fontWeight: 700, fontSize: 13 }}>{(t.serviceType?.name ?? 'Viagem')}{(t as any).clients && Array.isArray((t as any).clients) ? ` - ${(t as any).clients.map((c: any) => c.name).join(', ')}` : (t.client ? ` - ${t.client}` : '')}</div>
                                 <div style={{ fontSize: 12, color: PALETTE.textSecondary }}>{new Date(t.date).toLocaleDateString('pt-BR')} — {t.city?.name ?? '—'}</div>
                                 <div style={{ fontSize: 12, color: PALETTE.textSecondary }}>Equipe: {equipe}</div>
                               </div>
@@ -984,13 +1125,23 @@ export default function Trips() {
                           const travelers = (t.travelers || []).map((w: any) => w.name)
                           const equipeNames = Array.from(new Set([...drivers, ...travelers]))
                           const equipeStr = equipeNames.length ? equipeNames.join(', ') : '—'
+                          const today = new Date()
+                          today.setHours(0,0,0,0)
+                          const tripDay = new Date(t.date)
+                          tripDay.setHours(0,0,0,0)
+                          const eventColor = t.completed ? PALETTE.success : (tripDay.getTime() >= today.getTime() ? PALETTE.warning : PALETTE.error)
+                          const textOnWarning = '#000000'
+                          const textColor = eventColor === PALETTE.warning ? textOnWarning : '#ffffff'
                           return (
                             <div
                               key={t.id}
                               onClick={() => canEdit ? openEditTrip(t) : undefined}
-                              style={{ padding: '10px 12px', borderRadius: 8, background: PALETTE.backgroundSecondary, border: `1px solid ${PALETTE.border}`, cursor: canEdit ? 'pointer' : 'default', display: 'flex', flexDirection: 'column', gap: 6 }}
+                              style={{ padding: '10px 12px', borderRadius: 8, background: PALETTE.backgroundSecondary, border: `1px solid ${PALETTE.border}`, cursor: canEdit ? 'pointer' : 'default', display: 'flex', flexDirection: 'column', gap: 6, borderLeft: `6px solid ${eventColor}` }}
                             >
-                              <div style={{ fontWeight: 700 }}>{`${tripDayOfWeek} - ${tripDateStr} - ${typeName}`}</div>
+                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                <div style={{ fontWeight: 700 }}>{`${tripDayOfWeek} - ${tripDateStr} - ${typeName}`}</div>
+                                <div style={{ width: 10, height: 10, borderRadius: 6, background: eventColor }} />
+                              </div>
                               <div style={{ fontSize: 13, color: PALETTE.textSecondary }}>Destino: {destino}</div>
                               <div style={{ fontSize: 13, color: PALETTE.textSecondary }}>Veículo: {veiculo}</div>
                               <div style={{ fontSize: 13, color: PALETTE.textSecondary }}>Equipe: {equipeStr}</div>
@@ -1005,7 +1156,7 @@ export default function Trips() {
                             type="button"
                             onClick={() => {
                               setEditingTrip(null)
-                              setForm({ ...EMPTY_FORM, date: selectedDay.toISOString().slice(0, 10), mealExpense: defaultMealExpense != null ? String(defaultMealExpense) : '' })
+                              setForm({ ...EMPTY_FORM, date: selectedDay.toISOString().slice(0, 10), endDate: selectedDay.toISOString().slice(0, 10), mealExpense: defaultMealExpense != null ? String(defaultMealExpense) : '' })
                               setMealEdited(false)
                               setCostEdited(false)
                               setCalcDirty(false)
@@ -1310,8 +1461,56 @@ export default function Trips() {
                       </select>
                     </div>
                     <div style={{ gridColumn: '1 / -1' }}>
-                      <label style={labelStyle}>Cliente</label>
-                      <input type="text" value={form.client} onChange={e => setForm({ ...form, client: e.target.value })} style={inputStyle} />
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <label style={labelStyle}>Clientes</label>
+                        <button type="button" onClick={() => setForm(f => {
+                          const clients = Array.isArray((f as any).clients) ? [...(f as any).clients] : []
+                          clients.push({ name: '', price: '', info: '' })
+                          return { ...f, clients }
+                        })} style={{ ...(btnSmallBlue as any), padding: '6px 8px' }}>+</button>
+                      </div>
+                      {(form as any).clients?.map((c: any, idx: number) => (
+                        <div key={idx} style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 40px', gap: 8, marginTop: 8 }}>
+                          <input
+                            type="text"
+                            placeholder={idx === 0 ? '' : ''}
+                            value={c.name}
+                            onChange={e => setForm(f => {
+                              const clients = Array.isArray((f as any).clients) ? [...(f as any).clients] : []
+                              clients[idx] = { ...clients[idx], name: e.target.value }
+                              const sum = clients.reduce((s: number, it: any) => s + (Number(it.price) || 0), 0)
+                              return { ...f, clients, price: sum ? String(sum) : '' }
+                            })}
+                            style={inputStyle}
+                          />
+                          <div style={{ position: 'relative' }}>
+                            <span style={moneyPrefix}>R$</span>
+                            <input type="number" step="0.01" value={c.price} onChange={e => setForm(f => {
+                              const clients = Array.isArray((f as any).clients) ? [...(f as any).clients] : []
+                              clients[idx] = { ...clients[idx], price: e.target.value }
+                              const sum = clients.reduce((s: number, it: any) => s + (Number(it.price) || 0), 0)
+                              return { ...f, clients, price: sum ? String(sum) : '' }
+                            })} style={{ ...inputStyle, paddingLeft: 34 }} />
+                          </div>
+                          <input type="text" placeholder="Informação" value={c.info} onChange={e => setForm(f => {
+                            const clients = Array.isArray((f as any).clients) ? [...(f as any).clients] : []
+                            clients[idx] = { ...clients[idx], info: e.target.value }
+                            return { ...f, clients }
+                          })} style={inputStyle} />
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            {idx === 0 ? (
+                              <div style={{ width: 32 }} />
+                            ) : (
+                              <button type="button" onClick={() => setForm(f => {
+                                const clients = Array.isArray((f as any).clients) ? [...(f as any).clients] : []
+                                clients.splice(idx, 1)
+                                const sum = clients.reduce((s: number, it: any) => s + (Number(it.price) || 0), 0)
+                                return { ...f, clients, price: sum ? String(sum) : '' }
+                              })} style={{ ...(btnSmallRed as any), padding: '6px 8px' }}>✖</button>
+                            )}
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   </div>
                 </div>
@@ -1358,14 +1557,7 @@ export default function Trips() {
                     {/* Grupo: Despesas */}
                     <div>
                       <div style={{ display: 'grid', gap: 6 }}>
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 8 }}>
-                          <div>
-                            <label style={{ ...labelStyle, fontSize: 11 }}>Preço (R$)</label>
-                            <div style={moneyWrapper}>
-                              <span style={moneyPrefix}>R$</span>
-                              <input type="number" step="0.01" value={form.price} onChange={e => setForm({ ...form, price: e.target.value })} style={{ ...inputStyle, paddingLeft: 34 }} />
-                            </div>
-                          </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
                           <div>
                             <label style={{ ...labelStyle, fontSize: 11 }}>Alimentação (R$)</label>
                             <div style={moneyWrapper}>
@@ -1462,19 +1654,32 @@ export default function Trips() {
               {editingTrip && (
                 <div style={{ marginTop: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
                   <div style={{ display: 'flex', gap: 8 }}>
-                    <button type="button" onClick={async () => {
+                      <button type="button" onClick={async () => {
                       if (!editingTrip) return
                       if (!editingTrip.completed) {
+                        // compute local-midnight ISO from trip start date
+                        const dateOnly = toDateInput(editingTrip.date)
+                        const endIso = new Date(parseLocalDate(dateOnly)).toISOString()
                         await handleMarkComplete(editingTrip)
-                        setEditingTrip(et => et ? { ...et, completed: true, endDate: new Date().toISOString() } : et)
+                        setEditingTrip(et => et ? { ...et, completed: true, endDate: endIso } : et)
+                        setForm(f => ({ ...f, endDate: endIso }))
                       } else {
                         await handleMarkIncomplete(editingTrip)
                         setEditingTrip(et => et ? { ...et, completed: false, endDate: null } : et)
+                        setForm(f => ({ ...f, endDate: null }))
                       }
                     }}
                       style={editingTrip.completed ? { ...(btnSmallBlue as any), padding: '8px 12px', fontSize: 14, background: '#2ecc71', color: '#fff' } : { ...(btnSmallBlue as any), padding: '8px 12px', fontSize: 14 }}>
-                      {!editingTrip.completed ? 'Marcar como completa' : (editingTrip.endDate ? `Concluída ${new Date(editingTrip.endDate).toLocaleDateString('pt-BR')} (desmarcar)` : 'Concluída (desmarcar)')}
+                      {!editingTrip.completed ? 'Marcar como completa' : 'Concluída'}
                     </button>
+                    {editingTrip.completed && (
+                      <input
+                        type="date"
+                        value={form.endDate ? form.endDate.slice(0, 10) : ''}
+                        onChange={e => setForm(f => ({ ...f, endDate: e.target.value ? new Date(e.target.value).toISOString() : null }))}
+                        style={{ ...inputStyle, width: 160, alignSelf: 'center' }}
+                      />
+                    )}
                     <button type="button" onClick={() => { setConfirmDelete(editingTrip); setShowTripModal(false) }} style={{ ...(btnSmallRed as any), padding: '8px 12px', fontSize: 14 }}>Excluir viagem</button>
                   </div>
                   <div style={{ display: 'flex', gap: 8 }}>

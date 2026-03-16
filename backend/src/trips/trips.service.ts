@@ -33,6 +33,13 @@ export class TripsService {
       const def = await this.settings.getDefaultMealExpense()
       payload.mealExpense = def
     }
+    // support new clients array (name/price/info) and convert to parallel arrays for Prisma
+    if (payload.clients && Array.isArray(payload.clients)) {
+      payload.client = payload.clients.map((c: any) => c.name ?? '')
+      payload.price = payload.clients.map((c: any) => c.price != null ? c.price : 0)
+      payload.informationPrice = payload.clients.map((c: any) => c.info ?? '')
+      delete payload.clients
+    }
     if (payload.travelerIds) {
       payload.travelers = { connect: payload.travelerIds.map((id: number) => ({ id })) }
       delete payload.travelerIds
@@ -48,6 +55,13 @@ export class TripsService {
     const payload: any = { ...data }
     if (payload.date) payload.date = new Date(payload.date)
     if (payload.endDate) payload.endDate = new Date(payload.endDate)
+    // support clients array on update
+    if (payload.clients && Array.isArray(payload.clients)) {
+      payload.client = payload.clients.map((c: any) => c.name ?? '')
+      payload.price = payload.clients.map((c: any) => c.price != null ? c.price : 0)
+      payload.informationPrice = payload.clients.map((c: any) => c.info ?? '')
+      delete payload.clients
+    }
     if (payload.travelerIds) {
       payload.travelers = { set: payload.travelerIds.map((id: number) => ({ id })) }
       delete payload.travelerIds
