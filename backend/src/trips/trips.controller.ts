@@ -9,6 +9,7 @@ class CreateTripDto {
   cities?: { cityId: number; clients?: { name?: string; price?: number; info?: string }[]; notes?: string }[]
   vehicleId?: number
   date!: string
+  startTime?: string
   client?: string
   clients?: { name?: string; price?: number; info?: string }[]
   serviceTypeId!: number
@@ -34,6 +35,7 @@ class UpdateTripDto {
   cities?: { cityId: number; clients?: { name?: string; price?: number; info?: string }[]; notes?: string }[]
   vehicleId?: number
   date?: string
+  startTime?: string
   client?: string
   clients?: { name?: string; price?: number; info?: string }[]
   serviceTypeId?: number

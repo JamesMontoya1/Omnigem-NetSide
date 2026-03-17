@@ -44,7 +44,7 @@ export default function Selection() {
 
         <div style={{ display: 'flex', gap: 12, justifyContent: 'center' }}>
           <button onClick={() => router.push('/shifts')} style={{ ...btnPrimary, flex: 1 }}>Plantões</button>
-          <button onClick={() => router.push('/ferias')} style={{ ...btnPrimary, flex: 1 }}>Férias</button>
+          <button onClick={() => router.push('/vacations')} style={{ ...btnPrimary, flex: 1 }}>Férias</button>
           <button onClick={() => router.push('/trips')} style={{ ...btnPrimary, flex: 1 }}>Viagens</button>
         </div>
         {isAdmin && (
