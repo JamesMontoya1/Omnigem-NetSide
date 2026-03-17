@@ -16,10 +16,10 @@ type Trip = {
   id: number; date: string; cityId: number; city?: City; vehicleId?: number; vehicle?: Vehicle
   client?: string; serviceTypeId: number
   serviceType?: { id: number; name: string; code?: string }
-  // backwards-compatible single price/client OR new array of clients/prices
   price?: number
   clients?: { name: string; price?: number; info?: string }[]
-  mealExpense?: number; fuelExpense?: number; extraExpense?: number; notesExtraExpense?: string
+  mealExpense?: number; fuelExpense?: number; extraExpense?: number; extraInfo?: string
+  fuelInfo?: string
   kmDriven?: number; costPerKm?: number; profitPerKm?: number
   avgConsumption?: number; remainingAutonomy?: number
   travelers?: Worker[]; drivers?: Worker[]; note?: string
@@ -31,9 +31,10 @@ type ExpenseCategory = { id: number; name: string; description?: string }
 
 const EMPTY_FORM = {
   date: '', cityId: '', vehicleId: '', client: '', serviceTypeId: '',
-  // multiple clients (each has name, price, info). keep single `client` and `price` for BC.
   clients: [{ name: '', price: '', info: '' }],
-  mealExpense: '', fuelExpense: '', extraExpense: '', notesExtraExpense: '', price: '',
+  cities: [{ cityId: '', clients: [{ name: '', price: '', info: '' }], notes: '' }],
+  mealExpense: '', fuelExpense: '', fuelInfo: '', extraExpense: '', price: '',
+  extraInfo: '',
   kmDriven: '', costPerKm: '', profitPerKm: '', avgConsumption: '', remainingAutonomy: '',
   total: '',
   travelerIds: [] as number[], driverIds: [] as number[], note: '', endDate: '',
@@ -50,10 +51,6 @@ const modal: React.CSSProperties = {
 }
 const smallModal: React.CSSProperties = { ...modal, width: 420 }
 const moneyWrapper: React.CSSProperties = { position: 'relative' }
-const moneyPrefix: React.CSSProperties = {
-  position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)',
-  color: PALETTE.textSecondary, fontSize: 12, pointerEvents: 'none'
-}
 
 function num(v: any): number | undefined { const n = Number(v); return isNaN(n) ? undefined : n }
 function toDateInput(iso: string) {
@@ -64,6 +61,13 @@ function toDateInput(iso: string) {
 function money(v: any) { const n = Number(v); return isNaN(n) || n === 0 ? '' : `R$ ${n.toFixed(2)}` }
 function decimal(v: any) { const n = Number(v); return isNaN(n) || n === 0 ? '' : n.toFixed(2) }
 function truncate(s: string | undefined, n = 80) { if (!s) return ''; return s.length > n ? s.slice(0, n) + '…' : s }
+
+function sumFuel(v: any): number {
+  if (v == null) return 0
+  if (Array.isArray(v)) return v.reduce((s: number, x: any) => s + (Number(x) || 0), 0)
+  const n = Number(v)
+  return isNaN(n) ? 0 : n
+}
 
 const cellSingleLine: React.CSSProperties = { whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }
 
@@ -118,8 +122,7 @@ export default function Trips() {
   const [editingTrip, setEditingTrip] = useState<Trip | null>(null)
   const [form, setForm] = useState({ ...EMPTY_FORM })
   const [mealEdited, setMealEdited] = useState(false)
-  const [costEdited, setCostEdited] = useState(false)
-  const [calcDirty, setCalcDirty] = useState(false)
+  
 
   const [showCityModal, setShowCityModal] = useState(false)
   const [cityForm, setCityForm] = useState({ name: '', state: '', country: 'BR' })
@@ -129,7 +132,6 @@ export default function Trips() {
   const [vehicleForm, setVehicleForm] = useState({ plate: '', model: '', notes: '' })
   const [editingVehicle, setEditingVehicle] = useState<Vehicle | null>(null)
 
-  // Vehicle expenses UI state
   const [selectedVehicleId, setSelectedVehicleId] = useState<number | null>(null)
   const [vehicleExpenses, setVehicleExpenses] = useState<any[]>([])
   const [loadingExpenses, setLoadingExpenses] = useState(false)
@@ -139,11 +141,15 @@ export default function Trips() {
   const [expenseCategories, setExpenseCategories] = useState<ExpenseCategory[]>([])
 
   const [showExtraNoteModal, setShowExtraNoteModal] = useState(false)
-  const extraNoteInputRef = useRef<HTMLInputElement | null>(null)
+  const extraNoteInputRef = useRef<HTMLTextAreaElement | null>(null)
+  const [showFuelNoteModal, setShowFuelNoteModal] = useState(false)
+  const fuelNoteInputRef = useRef<HTMLTextAreaElement | null>(null)
+  const [skipInitialCalc, setSkipInitialCalc] = useState(false)
 
   const [showManageCities, setShowManageCities] = useState(false)
   const [showManageVehicles, setShowManageVehicles] = useState(false)
   const [showManageWorkers, setShowManageWorkers] = useState(false)
+  const [showCitiesClientsModal, setShowCitiesClientsModal] = useState(false)
   const [showCategories, setShowCategories] = useState(false)
 
   const [hoveredRow, setHoveredRow] = useState<number | null>(null)
@@ -216,7 +222,7 @@ export default function Trips() {
   function tripsForDate(date: Date) {
     const iso = isoDate(date)
     return trips.filter(t => {
-      const start = isoDate(new Date(t.date))
+      const start = toDateInput(t.date)
       return iso === start && isTripVisible(t)
     })
   }
@@ -233,12 +239,12 @@ export default function Trips() {
     if (filterType !== '' && t.serviceTypeId !== Number(filterType)) return false
     if (filterStart) {
       const s = new Date(filterStart); s.setHours(0,0,0,0)
-      const td = new Date(t.date); td.setHours(0,0,0,0)
+      const td = parseLocalDate(toDateInput(t.date)); td.setHours(0,0,0,0)
       if (td.getTime() < s.getTime()) return false
     }
     if (filterEnd) {
       const e = new Date(filterEnd); e.setHours(0,0,0,0)
-      const td = new Date(t.date); td.setHours(0,0,0,0)
+      const td = parseLocalDate(toDateInput(t.date)); td.setHours(0,0,0,0)
       if (td.getTime() > e.getTime()) return false
     }
     return true
@@ -251,7 +257,16 @@ export default function Trips() {
       if (filterStart) params.set('startDate', filterStart)
       if (filterEnd) params.set('endDate', filterEnd)
       const res = await fetch(`${API_BASE}/trips?${params}`, { headers: authHeaders() })
-      setTrips(await res.json())
+      const raw = await res.json()
+      const normalized = (raw || []).map((t: any) => {
+        if (t.tripCities && Array.isArray(t.tripCities) && t.tripCities.length > 0) {
+          const primary = t.tripCities[0]
+          const clients = primary.clients && primary.clients.length ? primary.clients.map((name: any, idx: number) => ({ name, price: (primary.prices && primary.prices[idx]) ?? undefined, info: (primary.information && primary.information[idx]) ?? undefined })) : (t.clients || [])
+          return { ...t, cityId: primary.cityId, city: primary.city, clients }
+        }
+        return t
+      })
+      setTrips(normalized)
     } catch { setTrips([]) } finally { setLoading(false) }
   }, [filterStart, filterEnd])
 
@@ -324,22 +339,23 @@ export default function Trips() {
     if (showExtraNoteModal) extraNoteInputRef.current?.focus()
   }, [showExtraNoteModal])
 
+  useEffect(() => {
+    if (showFuelNoteModal) fuelNoteInputRef.current?.focus()
+  }, [showFuelNoteModal])
+
   function openNewTrip() {
     setEditingTrip(null)
     setForm({ ...EMPTY_FORM, mealExpense: defaultMealExpense != null ? String(defaultMealExpense) : '' })
     setMealEdited(false)
-    setCostEdited(false)
-    setCalcDirty(false)
+    setSkipInitialCalc(true)
     setShowTripModal(true)
   }
   
   function openEditTrip(t: Trip) {
     setEditingTrip(t)
     const kmDriven = t.kmDriven ?? 0
-    const totalExp = (Number(t.mealExpense) || 0) + (Number(t.fuelExpense) || 0) + (Number(t.extraExpense) || 0)
-    // map existing trip clients into form.clients
+    const totalExp = (Number(t.mealExpense) || 0) + sumFuel((t as any).fuelExpense) + (Number(t.extraExpense) || 0)
     let clientsForForm: any[] = []
-    // new-style: backend may return parallel arrays `client`, `price`, `informationPrice`
     if ((t as any).client && Array.isArray((t as any).client)) {
       const names = (t as any).client as any[]
       const prices = Array.isArray((t as any).price) ? (t as any).price as any[] : []
@@ -355,26 +371,45 @@ export default function Trips() {
       clientsForForm = [{ name: typeof (t as any).client === 'string' ? (t as any).client : '', price: t.price != null ? String(t.price) : '', info: '' }]
     }
 
-    // compute price from clients (if any) or fallback to single numeric price
-    const computedPriceVal = clientsForForm.length > 0
-      ? clientsForForm.reduce((s: number, c: any) => s + (Number(c.price) || 0), 0)
-      : (Number(t.price) || 0)
-    const computedCost = kmDriven > 0 ? (totalExp / kmDriven) : undefined
+    let computedPriceVal = 0
+      if ((t as any).tripCities && Array.isArray((t as any).tripCities) && (t as any).tripCities.length > 0) {
+      computedPriceVal = (t as any).tripCities.reduce((sum: number, tc: any) => {
+        if (Array.isArray(tc.clients) && tc.clients.length > 0) {
+          for (let idx = 0; idx < tc.clients.length; idx++) {
+            const p = tc.prices && tc.prices[idx] != null ? Number(tc.prices[idx]) : 0
+            sum += (p || 0)
+          }
+        }
+        return sum
+      }, 0)
+    } else {
+      computedPriceVal = clientsForForm.length > 0
+        ? clientsForForm.reduce((s: number, c: any) => s + (Number(c.price) || 0), 0)
+        : (Number(t.price) || 0)
+    }
+      const computedCost = kmDriven > 0 ? (totalExp / kmDriven) : undefined
     const computedProfit = kmDriven > 0 ? ((computedPriceVal - totalExp) / kmDriven) : undefined
     const computedTotalValue = computedPriceVal - totalExp
+
+    const travelerCount = t.travelers?.length ?? 0
+    const mealExpenseForForm = t.mealExpense != null
+      ? String(t.mealExpense)
+      : (defaultMealExpense != null && travelerCount > 0 ? String(defaultMealExpense * travelerCount) : '')
 
     setForm({
       date: toDateInput(t.date),
       cityId: String(t.cityId),
+      cities: ((t as any).tripCities && Array.isArray((t as any).tripCities)) ? (t as any).tripCities.map((tc: any) => ({ cityId: String(tc.cityId), clients: (Array.isArray(tc.clients) ? tc.clients.map((name: any, idx: number) => ({ name: name ?? '', price: (tc.prices && tc.prices[idx]) != null ? String(tc.prices[idx]) : '', info: (tc.information && tc.information[idx]) ?? '' })) : []), notes: tc.notes ?? '' })) : [{ cityId: String(t.cityId ?? ''), clients: clientsForForm, notes: t.extraInfo ?? '' }],
       vehicleId: t.vehicleId ? String(t.vehicleId) : '',
       client: t.client ?? '',
       clients: clientsForForm,
       serviceTypeId: t.serviceTypeId ? String(t.serviceTypeId) : '',
       price: t.price != null ? String(t.price) : '',
-      mealExpense: t.mealExpense != null ? String(t.mealExpense) : '',
-      fuelExpense: t.fuelExpense != null ? String(t.fuelExpense) : '',
+      mealExpense: mealExpenseForForm,
+      fuelExpense: t.fuelExpense != null ? String(sumFuel((t as any).fuelExpense)) : '',
+      fuelInfo: (t as any).fuelInfo ?? '',
       extraExpense: t.extraExpense != null ? String(t.extraExpense) : '',
-      notesExtraExpense: t.notesExtraExpense ?? '',
+      extraInfo: t.extraInfo ?? '',
       kmDriven: t.kmDriven != null ? String(t.kmDriven) : '',
       costPerKm: t.costPerKm != null ? String(t.costPerKm) : (computedCost != null ? String(Number(computedCost).toFixed(2)) : ''),
       profitPerKm: t.profitPerKm != null ? String(t.profitPerKm) : (computedProfit != null ? String(Number(computedProfit).toFixed(2)) : ''),
@@ -386,22 +421,32 @@ export default function Trips() {
       note: t.note ?? '',
       endDate: t.endDate ? toDateInput(t.endDate) : '',
     })
-    setMealEdited(true)
-    setCostEdited(t.costPerKm != null)
-    setCalcDirty(false)
+    // If the trip already had an explicit mealExpense stored, consider it edited.
+    // Otherwise allow auto-calculation based on selected travelers.
+    setMealEdited(t.mealExpense != null)
+    setSkipInitialCalc(true)
     setShowTripModal(true)
   }
 
   function handleRecalculate() {
     if (!editingTrip?.completed) return
     const meal = Number(form.mealExpense) || 0
-    const fuel = Number(form.fuelExpense) || 0
+      const fuel = Number(form.fuelExpense) || 0
     const extra = Number(form.extraExpense) || 0
     const km = Number(form.kmDriven) || 0
-    // price may be per-client; sum clients if available
-    const price = (form as any).clients && Array.isArray((form as any).clients)
-      ? (form as any).clients.reduce((s: number, c: any) => s + (Number(c.price) || 0), 0)
-      : Number(form.price) || 0
+    let price = 0
+    if ((form as any).cities && Array.isArray((form as any).cities) && (form as any).cities.length > 0) {
+      price = (form as any).cities.reduce((s: number, cb: any) => {
+        if (Array.isArray(cb.clients) && cb.clients.length > 0) {
+          return s + cb.clients.reduce((ss: number, c: any) => ss + (Number(c.price) || 0), 0)
+        }
+        return s
+      }, 0)
+    } else if ((form as any).clients && Array.isArray((form as any).clients)) {
+      price = (form as any).clients.reduce((s: number, c: any) => s + (Number(c.price) || 0), 0)
+    } else {
+      price = Number(form.price) || 0
+    }
     const computedTotal = price - (meal + fuel + extra)
     const totalDisplay = String(Number(computedTotal).toFixed(2))
     let costDisplay = ''
@@ -413,20 +458,27 @@ export default function Trips() {
       profitDisplay = String(Number(computedProfit).toFixed(2))
     }
     setForm(f => ({ ...f, total: totalDisplay, costPerKm: costDisplay, profitPerKm: profitDisplay }))
-    setCalcDirty(false)
   }
 
   useEffect(() => {
     if (!showTripModal) return
-    if (costEdited) return
+    if (skipInitialCalc) { setSkipInitialCalc(false); return }
     if (!editingTrip?.completed) return
     const meal = Number(form.mealExpense) || 0
     const fuel = Number(form.fuelExpense) || 0
     const extra = Number(form.extraExpense) || 0
     const km = Number(form.kmDriven) || 0
-    const price = (form as any).clients && Array.isArray((form as any).clients)
-      ? (form as any).clients.reduce((s: number, c: any) => s + (Number(c.price) || 0), 0)
-      : Number(form.price) || 0
+    let price = 0
+    if ((form as any).cities && Array.isArray((form as any).cities) && (form as any).cities.length > 0) {
+      price = (form as any).cities.reduce((s: number, cb: any) => {
+        if (Array.isArray(cb.clients) && cb.clients.length > 0) return s + cb.clients.reduce((ss: number, c: any) => ss + (Number(c.price) || 0), 0)
+        return s
+      }, 0)
+    } else if ((form as any).clients && Array.isArray((form as any).clients)) {
+      price = (form as any).clients.reduce((s: number, c: any) => s + (Number(c.price) || 0), 0)
+    } else {
+      price = Number(form.price) || 0
+    }
     const computedTotal = price - (meal + fuel + extra)
     const displayTotal = String(Number(computedTotal).toFixed(2))
     if ((form.total || '') !== displayTotal) setForm(f => ({ ...f, total: displayTotal }))
@@ -434,12 +486,10 @@ export default function Trips() {
     const computedCost = (meal + fuel + extra) / km
     const displayCost = String(Number(computedCost).toFixed(2))
     if (form.costPerKm !== displayCost) setForm(f => ({ ...f, costPerKm: displayCost }))
-    if (!form.profitPerKm || form.profitPerKm === '') {
-      const computedProfit = computedTotal / km
-      const displayProfit = String(Number(computedProfit).toFixed(2))
-      if (form.profitPerKm !== displayProfit) setForm(f => ({ ...f, profitPerKm: displayProfit }))
-    }
-  }, [form.mealExpense, form.fuelExpense, form.extraExpense, form.kmDriven, costEdited, showTripModal, editingTrip?.completed, JSON.stringify((form as any).clients)])
+    const computedProfit = computedTotal / km
+    const displayProfit = String(Number(computedProfit).toFixed(2))
+    if (form.profitPerKm !== displayProfit) setForm(f => ({ ...f, profitPerKm: displayProfit }))
+  }, [form.mealExpense, form.fuelExpense, form.extraExpense, form.kmDriven, showTripModal, editingTrip?.completed, JSON.stringify((form as any).clients)])
 
   async function handleSaveTrip(e: React.FormEvent) {
     e.preventDefault()
@@ -448,9 +498,17 @@ export default function Trips() {
     const extra = num(form.extraExpense) || 0
     const km = num(form.kmDriven) || 0
     const computedCostPerKm = km > 0 ? (meal + fuel + extra) / km : undefined
-    const totalPriceForCalc = (form as any).clients && Array.isArray((form as any).clients)
-      ? (form as any).clients.reduce((s: number, c: any) => s + (Number(c.price) || 0), 0)
-      : (num(form.price) || 0)
+    let totalPriceForCalc = 0
+    if ((form as any).cities && Array.isArray((form as any).cities) && (form as any).cities.length > 0) {
+      totalPriceForCalc = (form as any).cities.reduce((s: number, cb: any) => {
+        if (Array.isArray(cb.clients) && cb.clients.length > 0) return s + cb.clients.reduce((ss: number, c: any) => ss + (Number(c.price) || 0), 0)
+        return s
+      }, 0)
+    } else if ((form as any).clients && Array.isArray((form as any).clients)) {
+      totalPriceForCalc = (form as any).clients.reduce((s: number, c: any) => s + (Number(c.price) || 0), 0)
+    } else {
+      totalPriceForCalc = (num(form.price) || 0)
+    }
     const computedProfitPerKm = km > 0 ? ((totalPriceForCalc - (meal + fuel + extra)) / km) : undefined
     const toIsoSafe = (v: any) => {
       if (!v) return null
@@ -461,13 +519,22 @@ export default function Trips() {
 
     const payload: any = {
       date: form.date,
-      cityId: Number(form.cityId),
       vehicleId: form.vehicleId ? Number(form.vehicleId) : null,
-      client: form.client || null,
       serviceTypeId: Number(form.serviceTypeId),
       travelerIds: form.travelerIds, driverIds: form.driverIds,
       note: form.note || null,
       endDate: toIsoSafe(form.endDate),
+    }
+
+    if ((form as any).cities && Array.isArray((form as any).cities) && (form as any).cities.length > 0) {
+      payload.cities = (form as any).cities.map((cb: any) => ({
+        cityId: Number(cb.cityId),
+        clients: Array.isArray(cb.clients) ? cb.clients.map((cl: any) => ({ name: cl.name || null, price: num(cl.price) ?? null, info: cl.info || null })) : [],
+        notes: cb.notes || null,
+      }))
+    } else {
+      payload.cityId = Number(form.cityId)
+      payload.client = form.client || null
     }
 
     const clients = (form as any).clients && Array.isArray((form as any).clients)
@@ -478,17 +545,20 @@ export default function Trips() {
       }))
       : (form.client ? [{ name: form.client || null, price: num(form.price) ?? null, info: (form as any).informationPrice || null }] : [])
     if (clients.length) {
-      payload.clients = clients
-      payload.price = clients.reduce((s: number, c: any) => s + (c.price || 0), 0)
+      if (!payload.cities) {
+        payload.clients = clients
+        payload.price = clients.reduce((s: number, c: any) => s + (c.price || 0), 0)
+      }
     } else {
-      payload.price = num(form.price) ?? null
+      if (!payload.cities) payload.price = num(form.price) ?? null
     }
 
     if (editingTrip?.completed) {
       payload.mealExpense = num(form.mealExpense)
-      payload.fuelExpense = num(form.fuelExpense)
+      payload.fuelExpense = (form.fuelExpense !== '' && form.fuelExpense != null) ? num(form.fuelExpense) : null
+      payload.fuelInfo = form.fuelInfo || null
       payload.extraExpense = num(form.extraExpense)
-      payload.notesExtraExpense = form.notesExtraExpense || null
+      payload.extraInfo = form.extraInfo || null
       payload.kmDriven = num(form.kmDriven)
       payload.costPerKm = (num(form.costPerKm) ?? computedCostPerKm) ?? null
       payload.profitPerKm = (num(form.profitPerKm) ?? computedProfitPerKm) ?? null
@@ -519,7 +589,6 @@ export default function Trips() {
 
   async function handleMarkComplete(t: Trip) {
     try {
-      // ensure endDate uses the trip's start date at local midnight to avoid timezone shifts
       const dateOnly = toDateInput(t.date)
       const endDateIso = new Date(parseLocalDate(dateOnly)).toISOString()
       const res = await fetch(`${API_BASE}/trips/${t.id}`, {
@@ -596,7 +665,6 @@ export default function Trips() {
       if (expenseForm.date) payload.date = expenseForm.date
       if (expenseForm.notes) payload.notes = expenseForm.notes
       if (expenseForm.currency) payload.currency = expenseForm.currency
-      // categoryId as number (or omitted)
       if (expenseForm.categoryId) payload.categoryId = Number(expenseForm.categoryId)
       const url = editingExpense ? `${API_BASE}/vehicle-expenses/${editingExpense.id}` : `${API_BASE}/vehicle-expenses`
       const method = editingExpense ? 'PUT' : 'POST'
@@ -677,12 +745,12 @@ export default function Trips() {
     today.setHours(0, 0, 0, 0)
 
     const future = base
-      .filter(t => new Date(t.date).getTime() >= today.getTime())
-      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+      .filter(t => parseLocalDate(toDateInput(t.date)).getTime() >= today.getTime())
+      .sort((a, b) => parseLocalDate(toDateInput(a.date)).getTime() - parseLocalDate(toDateInput(b.date)).getTime())
 
     const past = base
-      .filter(t => new Date(t.date).getTime() < today.getTime())
-      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+      .filter(t => parseLocalDate(toDateInput(t.date)).getTime() < today.getTime())
+      .sort((a, b) => parseLocalDate(toDateInput(b.date)).getTime() - parseLocalDate(toDateInput(a.date)).getTime())
 
     return [...future, ...past]
   })()
@@ -693,12 +761,15 @@ export default function Trips() {
       const travelerIds = removed ? f.travelerIds.filter(x => x !== wid) : [...f.travelerIds, wid]
       const driverIds = removed ? (f.driverIds || []).filter(x => x !== wid) : f.driverIds
       let mealExpense = f.mealExpense
-      if (!mealEdited && defaultMealExpense != null) {
+      // Recalculate meal expense always when travelers change (based on default per-worker value)
+      if (defaultMealExpense != null) {
         const total = defaultMealExpense * travelerIds.length
         mealExpense = total ? String(total) : ''
       }
       return { ...f, travelerIds, driverIds, mealExpense }
     })
+    // mark as not manually edited so further toggles keep recalculating
+    setMealEdited(false)
   }
 
   function toggleDriver(wid: number) {
@@ -742,10 +813,9 @@ export default function Trips() {
           </thead>
           <tbody>
             {list.map((t, i) => {
-              const totalExpense = (Number(t.mealExpense) || 0) + (Number(t.fuelExpense) || 0) + (Number(t.extraExpense) || 0)
+              const totalExpense = (Number(t.mealExpense) || 0) + sumFuel((t as any).fuelExpense) + (Number(t.extraExpense) || 0)
               const expenseStr = money(totalExpense)
               const km = Number(t.kmDriven) || 0
-              // normalize clients into array of { name, price, info }
               const clientsArr: { name: string; price: number; info?: string }[] = ((): any[] => {
                 if ((t as any).clients && Array.isArray((t as any).clients)) {
                   return (t as any).clients.map((c: any) => ({ name: c.name ?? '', price: Number(c.price) || 0, info: c.info ?? '' }))
@@ -758,7 +828,20 @@ export default function Trips() {
                 }
                 return [{ name: typeof (t as any).client === 'string' ? (t as any).client : '', price: Number(t.price) || 0, info: '' }]
               })()
-              const priceVal = clientsArr.reduce((s: number, c: any) => s + (Number(c.price) || 0), 0)
+              let priceVal = 0
+              if (Array.isArray((t as any).tripCities) && (t as any).tripCities.length > 0) {
+                priceVal = (t as any).tripCities.reduce((sum: number, tc: any) => {
+                  if (Array.isArray(tc.clients) && tc.clients.length > 0) {
+                    for (let idx = 0; idx < tc.clients.length; idx++) {
+                      const p = tc.prices && tc.prices[idx] != null ? Number(tc.prices[idx]) : 0
+                      sum += (p || 0)
+                    }
+                  }
+                  return sum
+                }, 0)
+              } else {
+                priceVal = clientsArr.reduce((s: number, c: any) => s + (Number(c.price) || 0), 0)
+              }
               const computedCostPerKm = t.costPerKm != null ? Number(t.costPerKm) : (km > 0 ? totalExpense / km : 0)
               const costPerKmStr = money(computedCostPerKm)
               const computedProfitPerKm = t.profitPerKm != null ? Number(t.profitPerKm) : (km > 0 ? ((priceVal - totalExpense) / km) : 0)
@@ -770,7 +853,7 @@ export default function Trips() {
                 <React.Fragment key={t.id}>
                 <tr onClick={() => canEdit ? openEditTrip(t) : undefined} onMouseEnter={() => setHoveredRow(t.id)} onMouseLeave={() => setHoveredRow(null)} style={{ cursor: canEdit ? 'pointer' : 'default', borderBottom: `1px solid ${PALETTE.border}`, background: rowBg, transition: 'background 120ms ease' }}>
                   <td style={{ padding: 10, verticalAlign: 'top', color: PALETTE.textSecondary, width: 260, ...cellSingleLine }}>
-                    <div style={{ fontWeight: 700 }}>{WEEKDAYS[new Date(t.date).getDay()]} - {new Date(t.date).toLocaleDateString('pt-BR')} - {t.serviceType?.name ?? 'Viagem'}</div>
+                    <div style={{ fontWeight: 700 }}>{WEEKDAYS[parseLocalDate(toDateInput(t.date)).getDay()]} - {parseLocalDate(toDateInput(t.date)).toLocaleDateString('pt-BR')} - {t.serviceType?.name ?? 'Viagem'}</div>
                     <div style={{ fontSize: 12, color: PALETTE.textSecondary, marginTop: 6 }}>
                       {clientsArr.length === 0 ? '—' : (() => {
                         const c = clientsArr[0]
@@ -806,16 +889,54 @@ export default function Trips() {
                     <td colSpan={5} style={{ padding: 12, borderBottom: `1px solid ${PALETTE.border}` }}>
                       <div style={{ marginTop: 8 }}>
                         <strong>Clientes:</strong>
-                        <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 6 }}>
-                          {clientsArr.map((c, idx) => (
-                            <div key={idx} style={{ display: 'flex', gap: 12 }}>
-                              <div style={{ minWidth: 200, display: 'flex', alignItems: 'center', gap: 8 }}>
-                                <strong>{c.name || '—'}</strong>
-                                <span style={{ color: PALETTE.textSecondary }}>{money(c.price) || '-'}</span>
-                                {c.info ? <span style={{ color: PALETTE.textSecondary }}>— {truncate(c.info, 80)}</span> : null}
+                        <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                          {Array.isArray((t as any).tripCities) && (t as any).tripCities.length > 0 ? (
+                            (t as any).tripCities.map((tc: any, tcIdx: number) => (
+                              <div key={tcIdx} style={{ padding: '6px 0', borderBottom: tcIdx < ((t as any).tripCities.length - 1) ? `1px dashed ${PALETTE.border}` : 'none' }}>
+                                <div style={{ fontWeight: 700 }}>{tc.city?.name ?? '—'}</div>
+                                <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                                  {Array.isArray(tc.clients) && tc.clients.length > 0 ? (
+                                    tc.clients.map((name: any, cidx: number) => {
+                                      const price = tc.prices && tc.prices[cidx] != null ? Number(tc.prices[cidx]) : 0
+                                      const info = tc.information && tc.information[cidx] ? tc.information[cidx] : ''
+                                      return (
+                                        <div key={cidx} style={{ display: 'flex', gap: 12 }}>
+                                          <div style={{ minWidth: 200, display: 'flex', alignItems: 'center', gap: 8 }}>
+                                            <strong>{name || '—'}</strong>
+                                            <span style={{ color: PALETTE.textSecondary }}>{money(price) || '-'}</span>
+                                            {info ? <span style={{ color: PALETTE.textSecondary }}>— {truncate(info, 80)}</span> : null}
+                                          </div>
+                                        </div>
+                                      )
+                                    })
+                                  ) : (
+                                    clientsArr.map((c, idx) => (
+                                      <div key={idx} style={{ display: 'flex', gap: 12 }}>
+                                        <div style={{ minWidth: 200, display: 'flex', alignItems: 'center', gap: 8 }}>
+                                          <strong>{c.name || '—'}</strong>
+                                          <span style={{ color: PALETTE.textSecondary }}>{money(c.price) || '-'}</span>
+                                          {c.info ? <span style={{ color: PALETTE.textSecondary }}>— {truncate(c.info, 80)}</span> : null}
+                                        </div>
+                                      </div>
+                                    ))
+                                  )}
+                                  {tc.notes ? <div style={{ color: PALETTE.textSecondary }}>Notas: {tc.notes}</div> : null}
+                                </div>
                               </div>
+                            ))
+                          ) : (
+                            <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                              {clientsArr.map((c, idx) => (
+                                <div key={idx} style={{ display: 'flex', gap: 12 }}>
+                                  <div style={{ minWidth: 200, display: 'flex', alignItems: 'center', gap: 8 }}>
+                                    <strong>{c.name || '—'}</strong>
+                                    <span style={{ color: PALETTE.textSecondary }}>{money(c.price) || '-'}</span>
+                                    {c.info ? <span style={{ color: PALETTE.textSecondary }}>— {truncate(c.info, 80)}</span> : null}
+                                  </div>
+                                </div>
+                              ))}
                             </div>
-                          ))}
+                          )}
                         </div>
                       </div>
 
@@ -1024,7 +1145,7 @@ export default function Trips() {
                                     (() => {
                                       const today = new Date()
                                       today.setHours(0, 0, 0, 0)
-                                      const tripDay = new Date(t.date)
+                                      const tripDay = parseLocalDate(toDateInput(t.date))
                                       tripDay.setHours(0, 0, 0, 0)
                                       const eventColor = t.completed ? PALETTE.success : (tripDay.getTime() >= today.getTime() ? PALETTE.warning : PALETTE.error)
                                       const textColor = eventColor === PALETTE.warning ? '#000000' : '#ffffff'
@@ -1063,7 +1184,7 @@ export default function Trips() {
                           </div>
                         </div>
                         {list.length === 0 && <div style={{ color: PALETTE.textSecondary }}>{sidebarFilter === 'completed' ? 'Nenhuma viagem marcada como concluída.' : 'Nenhuma viagem pendente.'}</div>}
-                        {list.slice().sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map(t => {
+                          {list.slice().sort((a, b) => parseLocalDate(toDateInput(b.date)).getTime() - parseLocalDate(toDateInput(a.date)).getTime()).map(t => {
                           const equipe = Array.from(new Set([...(t.drivers || []).map((w: any) => w.name), ...(t.travelers || []).map((w: any) => w.name)])).join(', ') || '—'
                           return (
                             <div
@@ -1075,7 +1196,7 @@ export default function Trips() {
                             >
                               <div style={{ minWidth: 0 }}>
                                 <div style={{ fontWeight: 700, fontSize: 13 }}>{(t.serviceType?.name ?? 'Viagem')}{(t as any).clients && Array.isArray((t as any).clients) ? ` - ${(t as any).clients.map((c: any) => c.name).join(', ')}` : (t.client ? ` - ${t.client}` : '')}</div>
-                                <div style={{ fontSize: 12, color: PALETTE.textSecondary }}>{new Date(t.date).toLocaleDateString('pt-BR')} — {t.city?.name ?? '—'}</div>
+                                <div style={{ fontSize: 12, color: PALETTE.textSecondary }}>{parseLocalDate(toDateInput(t.date)).toLocaleDateString('pt-BR')} — {t.city?.name ?? '—'}</div>
                                 <div style={{ fontSize: 12, color: PALETTE.textSecondary }}>Equipe: {equipe}</div>
                               </div>
                             </div>
@@ -1116,8 +1237,9 @@ export default function Trips() {
                       <div style={{ padding: '16px 20px', flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 12 }}>
                         {dayTrips.length === 0 && <div style={{ color: PALETTE.textSecondary }}>Nenhuma viagem neste dia.</div>}
                         {dayTrips.map(t => {
-                          const tripDateStr = new Date(t.date).toLocaleDateString('pt-BR')
-                          const tripDayOfWeek = ['Domingo','Segunda-feira','Terça-feira','Quarta-feira','Quinta-feira','Sexta-feira','Sábado'][new Date(t.date).getDay()]
+                          const displayDate = parseLocalDate(toDateInput(t.date))
+                          const tripDateStr = displayDate.toLocaleDateString('pt-BR')
+                          const tripDayOfWeek = ['Domingo','Segunda-feira','Terça-feira','Quarta-feira','Quinta-feira','Sexta-feira','Sábado'][displayDate.getDay()]
                           const typeName = t.serviceType?.name ?? 'Viagem'
                           const destino = t.city?.name ?? '—'
                           const veiculo = t.vehicle ? `${t.vehicle.model ?? '—'}${t.vehicle.plate ? ` (${t.vehicle.plate})` : ''}` : '—'
@@ -1127,7 +1249,7 @@ export default function Trips() {
                           const equipeStr = equipeNames.length ? equipeNames.join(', ') : '—'
                           const today = new Date()
                           today.setHours(0,0,0,0)
-                          const tripDay = new Date(t.date)
+                          const tripDay = parseLocalDate(toDateInput(t.date))
                           tripDay.setHours(0,0,0,0)
                           const eventColor = t.completed ? PALETTE.success : (tripDay.getTime() >= today.getTime() ? PALETTE.warning : PALETTE.error)
                           const textOnWarning = '#000000'
@@ -1158,8 +1280,8 @@ export default function Trips() {
                               setEditingTrip(null)
                               setForm({ ...EMPTY_FORM, date: selectedDay.toISOString().slice(0, 10), endDate: selectedDay.toISOString().slice(0, 10), mealExpense: defaultMealExpense != null ? String(defaultMealExpense) : '' })
                               setMealEdited(false)
-                              setCostEdited(false)
-                              setCalcDirty(false)
+                              
+                              setSkipInitialCalc(true)
                               setShowTripModal(true)
                             }}
                             style={{ ...(btnPrimary as any), width: '100%' }}
@@ -1446,71 +1568,32 @@ export default function Trips() {
                         {serviceTypes.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                       </select>
                     </div>
-                    <div>
-                      <label style={labelStyle}>Cidade *</label>
-                      <select required value={form.cityId} onChange={e => setForm({ ...form, cityId: e.target.value })} style={selectStyle}>
-                        <option value="">Selecione...</option>
-                        {cities.map(c => <option key={c.id} value={c.id}>{c.name}{c.state ? ` - ${c.state}` : ''}</option>)}
-                      </select>
-                    </div>
-                    <div>
-                      <label style={labelStyle}>Veículo</label>
-                      <select value={form.vehicleId} onChange={e => setForm({ ...form, vehicleId: e.target.value })} style={selectStyle}>
-                        <option value="">Nenhum</option>
-                        {vehicles.map(v => <option key={v.id} value={v.id}>{v.model ?? '?'} {v.plate ? `(${v.plate})` : ''}</option>)}
-                      </select>
-                    </div>
                     <div style={{ gridColumn: '1 / -1' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <label style={labelStyle}>Clientes</label>
-                        <button type="button" onClick={() => setForm(f => {
-                          const clients = Array.isArray((f as any).clients) ? [...(f as any).clients] : []
-                          clients.push({ name: '', price: '', info: '' })
-                          return { ...f, clients }
-                        })} style={{ ...(btnSmallBlue as any), padding: '6px 8px' }}>+</button>
-                      </div>
-                      {(form as any).clients?.map((c: any, idx: number) => (
-                        <div key={idx} style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 40px', gap: 8, marginTop: 8 }}>
-                          <input
-                            type="text"
-                            placeholder={idx === 0 ? '' : ''}
-                            value={c.name}
-                            onChange={e => setForm(f => {
-                              const clients = Array.isArray((f as any).clients) ? [...(f as any).clients] : []
-                              clients[idx] = { ...clients[idx], name: e.target.value }
-                              const sum = clients.reduce((s: number, it: any) => s + (Number(it.price) || 0), 0)
-                              return { ...f, clients, price: sum ? String(sum) : '' }
-                            })}
-                            style={inputStyle}
-                          />
-                          <div style={{ position: 'relative' }}>
-                            <span style={moneyPrefix}>R$</span>
-                            <input type="number" step="0.01" value={c.price} onChange={e => setForm(f => {
-                              const clients = Array.isArray((f as any).clients) ? [...(f as any).clients] : []
-                              clients[idx] = { ...clients[idx], price: e.target.value }
-                              const sum = clients.reduce((s: number, it: any) => s + (Number(it.price) || 0), 0)
-                              return { ...f, clients, price: sum ? String(sum) : '' }
-                            })} style={{ ...inputStyle, paddingLeft: 34 }} />
-                          </div>
-                          <input type="text" placeholder="Informação" value={c.info} onChange={e => setForm(f => {
-                            const clients = Array.isArray((f as any).clients) ? [...(f as any).clients] : []
-                            clients[idx] = { ...clients[idx], info: e.target.value }
-                            return { ...f, clients }
-                          })} style={inputStyle} />
-                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                            {idx === 0 ? (
-                              <div style={{ width: 32 }} />
-                            ) : (
-                              <button type="button" onClick={() => setForm(f => {
-                                const clients = Array.isArray((f as any).clients) ? [...(f as any).clients] : []
-                                clients.splice(idx, 1)
-                                const sum = clients.reduce((s: number, it: any) => s + (Number(it.price) || 0), 0)
-                                return { ...f, clients, price: sum ? String(sum) : '' }
-                              })} style={{ ...(btnSmallRed as any), padding: '6px 8px' }}>✖</button>
-                            )}
-                          </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'space-between' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <label style={labelStyle}>Cidades & Clientes *</label>
                         </div>
-                      ))}
+                        <div>
+                          <button type="button" onClick={() => setShowCitiesClientsModal(true)} style={{ ...(btnSmallBlue as any), padding: '6px 8px' }}>Cidades/Clientes</button>
+                        </div>
+                      </div>
+
+                      <div style={{ marginTop: 8 }}>
+                        {((form as any).cities || []).length === 0 ? (
+                          <div style={{ color: PALETTE.textSecondary }}>Nenhuma cidade adicionada. Abra Cidades/Clientes para adicionar.</div>
+                        ) : (
+                          (form as any).cities.map((cityBlock: any, ci: number) => (
+                            <div key={ci} style={{ marginTop: 8, padding: 8, border: `1px dashed ${PALETTE.border}`, borderRadius: 6 }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <div style={{ fontWeight: 600 }}>
+                                  {cities.find((c: any) => String(c.id) === String(cityBlock.cityId))?.name || 'Cidade não selecionada'}
+                                </div>
+                                <div style={{ color: PALETTE.textSecondary, fontSize: 12 }}>{(cityBlock.clients || []).length} cliente(s)</div>
+                              </div>
+                            </div>
+                          ))
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -1561,23 +1644,25 @@ export default function Trips() {
                           <div>
                             <label style={{ ...labelStyle, fontSize: 11 }}>Alimentação (R$)</label>
                             <div style={moneyWrapper}>
-                              <span style={moneyPrefix}>R$</span>
-                              <input type="number" step="0.01" value={form.mealExpense} onChange={e => { setForm({ ...form, mealExpense: e.target.value }); setMealEdited(true); }} style={{ ...inputStyle, paddingLeft: 34 }} />
+                              <input type="number" step="0.01" value={form.mealExpense} onChange={e => { setForm({ ...form, mealExpense: e.target.value }); setMealEdited(true); }} style={inputStyle} />
                             </div>
                           </div>
                           <div>
                             <label style={{ ...labelStyle, fontSize: 11 }}>Combustível (R$)</label>
-                            <div style={moneyWrapper}>
-                              <span style={moneyPrefix}>R$</span>
-                              <input type="number" step="0.01" value={form.fuelExpense} onChange={e => setForm({ ...form, fuelExpense: e.target.value })} style={{ ...inputStyle, paddingLeft: 34 }} />
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                              <div style={{ flex: 1, position: 'relative' }}>
+                                <input type="number" step="0.01" value={form.fuelExpense} onChange={e => setForm({ ...form, fuelExpense: e.target.value })} style={inputStyle} />
+                              </div>
+                              {Number(form.fuelExpense) > 0 && (
+                                <button type="button" onClick={(e) => { e.stopPropagation(); setShowFuelNoteModal(true) }} style={{ ...(btnSmallBlue as any), padding: '6px 8px', fontSize: 12 }}>📝</button>
+                              )}
                             </div>
                           </div>
                           <div>
                             <label style={{ ...labelStyle, fontSize: 11 }}>Extra (R$)</label>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                               <div style={{ flex: 1, position: 'relative' }}>
-                                <span style={moneyPrefix}>R$</span>
-                                <input type="number" step="0.01" value={form.extraExpense} onChange={e => setForm({ ...form, extraExpense: e.target.value })} style={{ ...inputStyle, paddingLeft: 34 }} />
+                                <input type="number" step="0.01" value={form.extraExpense} onChange={e => setForm({ ...form, extraExpense: e.target.value })} style={inputStyle} />
                               </div>
                               {Number(form.extraExpense) > 0 && (
                                 <button type="button" onClick={(e) => { e.stopPropagation(); setShowExtraNoteModal(true) }} style={{ ...(btnSmallBlue as any), padding: '6px 8px', fontSize: 12 }}>📝</button>
@@ -1596,10 +1681,9 @@ export default function Trips() {
                             <input type="number" step="0.01" value={form.avgConsumption} onChange={e => setForm({ ...form, avgConsumption: e.target.value })} style={inputStyle} />
                           </div>
                           <div>
-                            <label style={{ ...labelStyle, fontSize: 11 }}>Autonomia Restante</label>
+                            <label style={{ ...labelStyle, fontSize: 11 }}>Autonomia Restante (Km)</label>
                             <div style={moneyWrapper}>
-                              <span style={moneyPrefix}>R$</span>
-                              <input type="number" step="0.01" value={form.remainingAutonomy} onChange={e => setForm({ ...form, remainingAutonomy: e.target.value })} style={{ ...inputStyle, paddingLeft: 34 }} />
+                              <input type="number" step="0.01" value={form.remainingAutonomy} onChange={e => setForm({ ...form, remainingAutonomy: e.target.value })} style={inputStyle} />
                             </div>
                           </div>
                         </div>
@@ -1607,39 +1691,31 @@ export default function Trips() {
                     </div>
                   </div>
 
-                  <div style={{ marginTop: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div style={{ marginTop: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
                       <label style={{ ...labelStyle, marginBottom: 0 }}>Cálculos</label>
-                      <div style={{ color: PALETTE.textSecondary, fontSize: 12 }}>calculado automaticamente (desbloqueie para editar)</div>
+                      <div style={{ color: PALETTE.textSecondary, fontSize: 12 }}>calculado automaticamente</div>
                     </div>
-                    <div>
-                      <button type="button" onClick={() => { setCostEdited(c => !c); if (costEdited) setCalcDirty(false); }} style={btnSmallBlue as any}>{costEdited ? 'Bloquear edição' : 'Editar cálculos'}</button>
-                      {calcDirty && (
-                        <button type="button" onClick={handleRecalculate} style={{ ...(btnSmallBlue as any), marginLeft: 8 }}>Recalcular</button>
-                      )}
-                    </div>
+                    <div />
                   </div>
 
                   <div style={{ marginTop: 8, display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
-                    <div>
+                      <div>
                       <label style={{ ...labelStyle, fontSize: 11 }}>Custo/km (R$)</label>
-                      <div style={moneyWrapper}>
-                        <span style={moneyPrefix}>R$</span>
-                        <input disabled={!costEdited} type="number" step="0.01" value={form.costPerKm} onChange={e => { setForm({ ...form, costPerKm: e.target.value }); setCostEdited(true); setCalcDirty(true); }} style={{ ...inputStyle, paddingLeft: 34 }} />
+                        <div style={moneyWrapper}>
+                        <input type="number" step="0.01" value={form.costPerKm} onChange={e => setForm({ ...form, costPerKm: e.target.value })} style={inputStyle} />
                       </div>
                     </div>
                     <div>
                       <label style={{ ...labelStyle, fontSize: 11 }}>Lucro/km (R$)</label>
                       <div style={moneyWrapper}>
-                        <span style={moneyPrefix}>R$</span>
-                        <input disabled={!costEdited} type="number" step="0.01" value={form.profitPerKm} onChange={e => { setForm({ ...form, profitPerKm: e.target.value }); setCostEdited(true); setCalcDirty(true); }} style={{ ...inputStyle, paddingLeft: 34 }} />
+                        <input type="number" step="0.01" value={form.profitPerKm} onChange={e => setForm({ ...form, profitPerKm: e.target.value })} style={inputStyle} />
                       </div>
                     </div>
                     <div>
                       <label style={{ ...labelStyle, fontSize: 11 }}>Total (R$)</label>
                       <div style={moneyWrapper}>
-                        <span style={moneyPrefix}>R$</span>
-                        <input disabled={!costEdited} type="number" step="0.01" value={form.total} onChange={e => { setForm({ ...form, total: e.target.value }); setCostEdited(true); setCalcDirty(true); }} style={{ ...inputStyle, paddingLeft: 34 }} />
+                        <input type="number" step="0.01" value={form.total} onChange={e => setForm({ ...form, total: e.target.value })} style={inputStyle} />
                       </div>
                     </div>
                   </div>
@@ -1657,7 +1733,6 @@ export default function Trips() {
                       <button type="button" onClick={async () => {
                       if (!editingTrip) return
                       if (!editingTrip.completed) {
-                        // compute local-midnight ISO from trip start date
                         const dateOnly = toDateInput(editingTrip.date)
                         const endIso = new Date(parseLocalDate(dateOnly)).toISOString()
                         await handleMarkComplete(editingTrip)
@@ -1670,7 +1745,7 @@ export default function Trips() {
                       }
                     }}
                       style={editingTrip.completed ? { ...(btnSmallBlue as any), padding: '8px 12px', fontSize: 14, background: '#2ecc71', color: '#fff' } : { ...(btnSmallBlue as any), padding: '8px 12px', fontSize: 14 }}>
-                      {!editingTrip.completed ? 'Marcar como completa' : 'Concluída'}
+                      {!editingTrip.completed ? 'Marcar como completa' : 'Marcar como pendente'}
                     </button>
                     {editingTrip.completed && (
                       <input
@@ -1695,6 +1770,129 @@ export default function Trips() {
                 </div>
               )}
             </form>
+          </div>
+        </div>
+      )}
+
+      {showCitiesClientsModal && (
+        <div style={overlay} onClick={() => setShowCitiesClientsModal(false)}>
+          <div style={modal} onClick={e => e.stopPropagation()}>
+            <h3 style={{ marginTop: 0 }}>Cidades & Clientes</h3>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'space-between' }}>
+                <div style={{ color: PALETTE.textSecondary, fontSize: 12 }}>Selecione uma cidade e adicione clientes para ela.</div>
+                <div>
+                  <button type="button" onClick={() => setForm(f => {
+                    const cities = Array.isArray((f as any).cities) ? [...(f as any).cities] : []
+                    cities.push({ cityId: '', clients: [{ name: '', price: '', info: '' }], notes: '' })
+                    return { ...f, cities }
+                  })} style={{ ...(btnSmallBlue as any), padding: '6px 8px' }}>+ Adicionar cidade</button>
+                </div>
+              </div>
+
+              {(form as any).cities?.map((cityBlock: any, ci: number) => (
+                <div
+                  key={ci}
+                  style={{
+                    marginTop: 12,
+                    marginBottom: 8,
+                    padding: 12,
+                    borderRadius: 8,
+                    background: PALETTE.cardBg,
+                    boxShadow: '0 8px 20px rgba(0,0,0,0.06)',
+                    border: `1px solid ${PALETTE.border}`,
+                    transition: 'transform 160ms ease, box-shadow 160ms ease',
+                  }}
+                >
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <select required value={cityBlock.cityId} onChange={e => setForm(f => {
+                      const cities = Array.isArray((f as any).cities) ? [...(f as any).cities] : []
+                      cities[ci] = { ...cities[ci], cityId: e.target.value }
+                      return { ...f, cities }
+                    })} style={{ ...selectStyle, flex: 1 }}>
+                      <option value="">Selecione cidade...</option>
+                      {cities.map(c => <option key={c.id} value={c.id}>{c.name}{c.state ? ` - ${c.state}` : ''}</option>)}
+                    </select>
+                    {((form as any).cities || []).length > 1 ? (
+                      <button type="button" onClick={() => setForm(f => {
+                        const cities = Array.isArray((f as any).cities) ? [...(f as any).cities] : []
+                        cities.splice(ci, 1)
+                        return { ...f, cities }
+                      })} style={{ ...(btnSmallRed as any), padding: '6px 8px' }}>Remover cidade</button>
+                    ) : <div style={{ width: 120 }} />}
+                  </div>
+
+                  <div style={{ marginTop: 8 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <label style={labelStyle}>Clientes</label>
+                      <button type="button" onClick={() => setForm(f => {
+                        const cities = Array.isArray((f as any).cities) ? [...(f as any).cities] : []
+                        const block = cities[ci] || { clients: [] }
+                        const clients = Array.isArray(block.clients) ? [...block.clients] : []
+                        clients.push({ name: '', price: '', info: '' })
+                        cities[ci] = { ...(cities[ci] || {}), clients }
+                        return { ...f, cities }
+                      })} style={{ ...(btnSmallBlue as any), padding: '6px 8px' }}>+</button>
+                    </div>
+
+                    {/* Header labels for client fields */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 40px', gap: 8, marginTop: 8 }}>
+                      <div style={{ fontSize: 12, color: PALETTE.textSecondary }}>Nome</div>
+                      <div style={{ fontSize: 12, color: PALETTE.textSecondary }}>Valor (serviço)</div>
+                      <div style={{ fontSize: 12, color: PALETTE.textSecondary }}>Info</div>
+                      <div />
+                    </div>
+
+                    {(cityBlock.clients || []).map((c: any, idx: number) => (
+                      <div key={idx} style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 40px', gap: 8, marginTop: 8 }}>
+                        <input type="text" placeholder="Nome do cliente" value={c.name} onChange={e => setForm(f => {
+                          const cities = Array.isArray((f as any).cities) ? [...(f as any).cities] : []
+                          const clients = Array.isArray(cities[ci].clients) ? [...cities[ci].clients] : []
+                          clients[idx] = { ...clients[idx], name: e.target.value }
+                          cities[ci] = { ...cities[ci], clients }
+                          return { ...f, cities }
+                        })} style={inputStyle} />
+                        <div style={{ position: 'relative' }}>
+                          <input type="number" step="0.01" value={c.price} onChange={e => setForm(f => {
+                            const cities = Array.isArray((f as any).cities) ? [...(f as any).cities] : []
+                            const clients = Array.isArray(cities[ci].clients) ? [...cities[ci].clients] : []
+                            clients[idx] = { ...clients[idx], price: e.target.value }
+                            cities[ci] = { ...cities[ci], clients }
+                            return { ...f, cities }
+                          })} style={inputStyle} />
+                        </div>
+                        <input type="text" placeholder="Informação" value={c.info} onChange={e => setForm(f => {
+                          const cities = Array.isArray((f as any).cities) ? [...(f as any).cities] : []
+                          const clients = Array.isArray(cities[ci].clients) ? [...cities[ci].clients] : []
+                          clients[idx] = { ...clients[idx], info: e.target.value }
+                          cities[ci] = { ...cities[ci], clients }
+                          return { ...f, cities }
+                        })} style={inputStyle} />
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          {idx === 0 ? (
+                            <div style={{ width: 32 }} />
+                          ) : (
+                            <button type="button" onClick={() => setForm(f => {
+                              const cities = Array.isArray((f as any).cities) ? [...(f as any).cities] : []
+                              const clients = Array.isArray(cities[ci].clients) ? [...cities[ci].clients] : []
+                              clients.splice(idx, 1)
+                              cities[ci] = { ...cities[ci], clients }
+                              return { ...f, cities }
+                            })} style={{ ...(btnSmallRed as any), padding: '6px 8px' }}>✖</button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+
+            </div>
+
+            <div style={{ marginTop: 12, display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button type="button" onClick={() => setShowCitiesClientsModal(false)} style={btnCancel as any}>Fechar</button>
+              <button type="button" onClick={() => setShowCitiesClientsModal(false)} style={btnPrimary as any}>Salvar</button>
+            </div>
           </div>
         </div>
       )}
@@ -1778,8 +1976,7 @@ export default function Trips() {
                       <div>
                         <label style={labelStyle}>Valor (R$)</label>
                         <div style={moneyWrapper}>
-                          <span style={moneyPrefix}>R$</span>
-                          <input type="number" step="0.01" value={expenseForm.amount} onChange={e => setExpenseForm({ ...expenseForm, amount: e.target.value })} style={{ ...inputStyle, paddingLeft: 34 }} />
+                          <input type="number" step="0.01" value={expenseForm.amount} onChange={e => setExpenseForm({ ...expenseForm, amount: e.target.value })} style={inputStyle} />
                         </div>
                       </div>
                       {/* Fornecedor removed */}
@@ -1900,11 +2097,30 @@ export default function Trips() {
             <form onSubmit={(e) => { e.preventDefault(); setShowExtraNoteModal(false) }}>
               <div style={{ display: 'grid', gap: 8 }}>
                 <div>
-                  <input ref={extraNoteInputRef} type="text" placeholder="Digite a nota" value={form.notesExtraExpense} onChange={e => setForm({ ...form, notesExtraExpense: e.target.value })} style={inputStyle} />
+                  <textarea ref={extraNoteInputRef} placeholder="Digite a nota" value={form.extraInfo} onChange={e => setForm({ ...form, extraInfo: e.target.value })} style={{ ...inputStyle, height: 100, minHeight:50 }} />
                 </div>
               </div>
               <div style={{ marginTop: 12, display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
                 <button type="button" onClick={() => setShowExtraNoteModal(false)} style={btnCancel as any}>Cancelar</button>
+                <button type="submit" style={btnPrimary as any}>Salvar</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {showFuelNoteModal && (
+        <div style={overlay} onClick={() => setShowFuelNoteModal(false)}>
+          <div style={smallModal} onClick={e => e.stopPropagation()}>
+            <h3 style={{ marginTop: 0 }}>Nota - Combustível</h3>
+            <form onSubmit={(e) => { e.preventDefault(); setShowFuelNoteModal(false) }}>
+              <div style={{ display: 'grid', gap: 8 }}>
+                <div>
+                  <textarea ref={fuelNoteInputRef} placeholder="Digite a nota" value={form.fuelInfo} onChange={e => setForm({ ...form, fuelInfo: e.target.value })} style={{ ...inputStyle, height: 100, minHeight:50 }} />
+                </div>
+              </div>
+              <div style={{ marginTop: 12, display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                <button type="button" onClick={() => setShowFuelNoteModal(false)} style={btnCancel as any}>Cancelar</button>
                 <button type="submit" style={btnPrimary as any}>Salvar</button>
               </div>
             </form>

@@ -6,6 +6,7 @@ import { Roles } from '../auth/roles.decorator'
 
 class CreateTripDto {
   cityId!: number
+  cities?: { cityId: number; clients?: { name?: string; price?: number; info?: string }[]; notes?: string }[]
   vehicleId?: number
   date!: string
   client?: string
@@ -30,6 +31,7 @@ class CreateTripDto {
 
 class UpdateTripDto {
   cityId?: number
+  cities?: { cityId: number; clients?: { name?: string; price?: number; info?: string }[]; notes?: string }[]
   vehicleId?: number
   date?: string
   client?: string

@@ -24,7 +24,6 @@ model User {
   createdAt DateTime @default(now())
 }
 
-// Trabalhadores que podem ser escalados
 model Worker {
   id              Int       @id @default(autoincrement())
   name            String
@@ -45,7 +44,6 @@ model Worker {
   vehicleExpenses    VehicleExpense[]
 }
 
-// Feriados (datas em que geralmente não se escala)
 model Holiday {
   id        Int      @id @default(autoincrement())
   date      DateTime
@@ -54,7 +52,6 @@ model Holiday {
   createdAt DateTime @default(now())
 }
 
-// Padrões de recorrência para atribuir um trabalhador em determinados dias da semana
 model RecurringPattern {
   id         Int      @id @default(autoincrement())
   workerId   Int
@@ -68,7 +65,6 @@ model RecurringPattern {
   createdAt  DateTime @default(now())
 }
 
-// Atribuição explícita por dia. Pode ser gerada a partir de padrões recorrentes.
 model Assignment {
   id         Int      @id @default(autoincrement())
   date       DateTime
@@ -86,8 +82,6 @@ enum AssignmentSource {
   RECURRENT
 }
 
-// Rodízio simplificado: lista ordenada de trabalhadores + dias da semana.
-// A cada semana, o próximo trabalhador da lista é responsável pelos dias configurados.
 model Rotation {
   id              Int       @id @default(autoincrement())
   name            String?
@@ -146,7 +140,7 @@ model City {
   state     String?
   country   String?  @default("BR")
   createdAt DateTime @default(now())
-  trips     Trip[]
+  trips     TripCity[]
 }
 
 model Vehicle {
@@ -194,22 +188,33 @@ model AppSetting {
   updatedAt DateTime @updatedAt
 }
 
+model TripCity {
+  id          Int       @id @default(autoincrement())
+  tripId      Int
+  trip        Trip      @relation(fields: [tripId], references: [id])
+  cityId      Int
+  city        City      @relation(fields: [cityId], references: [id])
+  clients     String[]  @default([])
+  prices      Decimal[] @default([])
+  information String[]  @default([])
+  notes       String?
+  createdAt   DateTime  @default(now())
+
+  @@index([tripId, cityId])
+}
+
 model Trip {
   id                   Int      @id @default(autoincrement())
-  cityId               Int
-  city                 City     @relation(fields: [cityId], references: [id])
   vehicleId            Int?
   vehicle              Vehicle? @relation(fields: [vehicleId], references: [id])
   date                 DateTime // Data de início da viagem
-  client               String[] // Pode ter múltiplos clientes (ex: "Cliente A", "Cliente B")
   serviceTypeId        Int
   serviceType          ServiceType @relation(fields: [serviceTypeId], references: [id])
   mealExpense          Decimal? @default(0)
   fuelExpense          Decimal? @default(0)
+  fuelInfo             String?
   extraExpense         Decimal? @default(0)
-  price                Decimal[] @default([]) // Pode ter múltiplos preços (ex: para diferentes clientes ou serviços)
-  informationPrice     String[] @default([]) // Detalhes sobre cada preço (ex: "Preço para Cliente A", "Preço para Cliente B")
-  notesExtraExpense    String?
+  extraInfo            String?
   kmDriven             Decimal? @default(0)
   costPerKm            Decimal? @default(0)
   profitPerKm          Decimal? @default(0)
@@ -222,4 +227,6 @@ model Trip {
   note                 String?
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
+
+  tripCities           TripCity[]
 }
