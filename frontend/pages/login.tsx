@@ -26,8 +26,8 @@ export default function Login() {
         return
       }
       const data = await res.json()
-      localStorage.setItem('plantoes_token', data.accessToken)
-      localStorage.setItem('plantoes_roles', JSON.stringify(data.roles))
+      localStorage.setItem('shifts_token', data.accessToken)
+      localStorage.setItem('shifts_roles', JSON.stringify(data.roles))
       router.push('/selection')
     } catch (err) {
       setError('Erro de conexão com o servidor')
@@ -37,8 +37,8 @@ export default function Login() {
   }
 
   function handleGuestAccess() {
-    localStorage.setItem('plantoes_token', '')
-    localStorage.setItem('plantoes_roles', JSON.stringify(['GUEST']))
+    localStorage.setItem('shifts_token', '')
+    localStorage.setItem('shifts_roles', JSON.stringify(['GUEST']))
     router.push('/selection')
   }
 

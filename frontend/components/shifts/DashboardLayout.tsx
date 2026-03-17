@@ -4,7 +4,6 @@ import { PALETTE } from '../../styles/theme'
 import WorkersContent from '../shared/WorkersContent'
 import HolidaysContent from '../shared/HolidaysContent'
 import AssignmentsContent from './AssignmentsContent'
-import ReportsContent from './ReportsContent'
 
 export type TabKey = 'dashboard' | 'workers' | 'holidays' | 'assignments' | 'reports';
 
@@ -32,9 +31,9 @@ export default function DashboardLayout({ initialTab, dashboardContent }: {
   const [activeTab, setActiveTab] = useState<TabKey>(initialFromQuery)
 
   useEffect(() => {
-    const token = typeof window !== 'undefined' ? localStorage.getItem('plantoes_token') : null
+    const token = typeof window !== 'undefined' ? localStorage.getItem('shifts_token') : null
     let storedRoles: string[] = []
-    try { storedRoles = JSON.parse(localStorage.getItem('plantoes_roles') || '[]') } catch {}
+    try { storedRoles = JSON.parse(localStorage.getItem('shifts_roles') || '[]') } catch {}
     // Allow guest access (empty token) but require that roles are set
     if (token === null && storedRoles.length === 0) {
       router.push('/login')
@@ -51,8 +50,8 @@ export default function DashboardLayout({ initialTab, dashboardContent }: {
   }, [router.query.tab, activeTab])
 
   function logout() {
-    localStorage.removeItem('plantoes_token')
-    localStorage.removeItem('plantoes_roles')
+    localStorage.removeItem('shifts_token')
+    localStorage.removeItem('shifts_roles')
     router.push('/login')
   }
 
@@ -63,7 +62,6 @@ export default function DashboardLayout({ initialTab, dashboardContent }: {
       case 'workers': return <WorkersContent readOnly={!isAdmin} />;
       case 'holidays': return <HolidaysContent readOnly={!isAdmin} />;
       case 'assignments': return <AssignmentsContent readOnly={!isAdmin} />;
-      case 'reports': return <ReportsContent />;
       default: return dashboardContent ?? null;
     }
   }
@@ -97,7 +95,7 @@ export default function DashboardLayout({ initialTab, dashboardContent }: {
                 key={tab.key}
                 onClick={() => {
                   setActiveTab(tab.key)
-                  router.push({ pathname: '/plantoes', query: { tab: tab.key } }, undefined, { shallow: true })
+                  router.push({ pathname: '/shifts', query: { tab: tab.key } }, undefined, { shallow: true })
                 }}
                 style={{
                   display: 'flex',
@@ -127,7 +125,7 @@ export default function DashboardLayout({ initialTab, dashboardContent }: {
 
           {/* Link externo para o calendário */}
           <a
-            href="/plantoes/calendar"
+            href="/shifts/calendar"
             style={{
               display: 'flex',
               alignItems: 'center',

@@ -8,15 +8,15 @@ export default function Selection() {
 
   useEffect(() => {
     try {
-      const roles = JSON.parse(localStorage.getItem('plantoes_roles') || '[]')
+      const roles = JSON.parse(localStorage.getItem('shifts_roles') || '[]')
       setIsAdmin(Array.isArray(roles) && roles.includes('ADMIN'))
     } catch { setIsAdmin(false) }
   }, [])
 
   const handleLogout = () => {
     try {
-      localStorage.removeItem('plantoes_token')
-      localStorage.removeItem('plantoes_roles')
+      localStorage.removeItem('shifts_token')
+      localStorage.removeItem('shifts_roles')
     } catch (e) {}
     router.push('/login')
   }
@@ -43,7 +43,7 @@ export default function Selection() {
         <p style={{ margin: '0 0 20px 0', color: PALETTE.textSecondary }}>Selecione uma opção</p>
 
         <div style={{ display: 'flex', gap: 12, justifyContent: 'center' }}>
-          <button onClick={() => router.push('/plantoes')} style={{ ...btnPrimary, flex: 1 }}>Plantões</button>
+          <button onClick={() => router.push('/shifts')} style={{ ...btnPrimary, flex: 1 }}>Plantões</button>
           <button onClick={() => router.push('/ferias')} style={{ ...btnPrimary, flex: 1 }}>Férias</button>
           <button onClick={() => router.push('/trips')} style={{ ...btnPrimary, flex: 1 }}>Viagens</button>
         </div>

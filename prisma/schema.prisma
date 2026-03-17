@@ -27,7 +27,6 @@ model User {
 model Worker {
   id              Int       @id @default(autoincrement())
   name            String
-  email           String?   @unique
   color           String?
   active          Boolean   @default(true)
   doesShifts      Boolean   @default(false) // Faz plantões?
@@ -35,7 +34,7 @@ model Worker {
   hireDate        DateTime?
   terminationDate DateTime?
   createdAt       DateTime  @default(now())
-  // relations
+
   recurringPatterns RecurringPattern[]
   assignments       Assignment[]
   vacations         Vacation[]

@@ -3,7 +3,7 @@ export const API_BASE =
 
 /** Returns headers with Authorization token if available */
 export function authHeaders(extra?: Record<string, string>): Record<string, string> {
-  const token = typeof window !== 'undefined' ? localStorage.getItem('plantoes_token') : null;
+  const token = typeof window !== 'undefined' ? localStorage.getItem('shifts_token') : null;
   const headers: Record<string, string> = { ...extra };
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;

@@ -30,7 +30,7 @@ export default function Usuarios() {
 
   useEffect(() => {
     try {
-      const roles = JSON.parse(localStorage.getItem('plantoes_roles') || '[]')
+      const roles = JSON.parse(localStorage.getItem('shifts_roles') || '[]')
       if (!Array.isArray(roles) || !roles.includes('ADMIN')) {
         router.push('/selection')
         return

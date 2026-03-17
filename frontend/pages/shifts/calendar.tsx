@@ -5,7 +5,7 @@ import { authHeaders, jsonAuthHeaders } from '../../config/api';
 import { PALETTE, btnPrimary, btnSmall, btnSmallRed, btnSmallBlue, btnNav, btnConfirm, btnCancel, btnDanger, inputStyle, selectStyle, cardStyle, labelStyle } from '../../styles/theme'
 import WorkersContent from '../../components/shared/WorkersContent';
 import HolidaysContent from '../../components/shared/HolidaysContent';
-import AssignmentsContent from '../../components/plantoes/AssignmentsContent';
+import AssignmentsContent from '../../components/shifts/AssignmentsContent';
 import { ReportsContent } from './reports';
 
 function startOfMonth(d: Date) { return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1)); }
@@ -60,7 +60,7 @@ export default function CalendarPage() {
   const [isAdmin, setIsAdmin] = useState(false);
   useEffect(() => {
     try {
-      const roles = JSON.parse(localStorage.getItem('plantoes_roles') || '[]');
+      const roles = JSON.parse(localStorage.getItem('shifts_roles') || '[]');
       setIsAdmin(Array.isArray(roles) && roles.includes('ADMIN'));
     } catch { setIsAdmin(false); }
   }, []);

@@ -180,7 +180,7 @@ export default function VacationsPage() {
 
   useEffect(() => {
     try {
-      const roles = JSON.parse(localStorage.getItem('plantoes_roles') || '[]')
+      const roles = JSON.parse(localStorage.getItem('shifts_roles') || '[]')
       setIsAdmin(Array.isArray(roles) && roles.includes('ADMIN'))
     } catch { setIsAdmin(false) }
     load()

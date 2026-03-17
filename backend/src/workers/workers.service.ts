@@ -13,22 +13,21 @@ export class WorkersService {
     return this.prisma.worker.findUnique({ where: { id } });
   }
 
-  create(data: { name: string; email?: string; color?: string; hireDate?: string; terminationDate?: string; doesShifts?: boolean; doesTravel?: boolean }) {
+  create(data: { name: string; color?: string; hireDate?: string; terminationDate?: string; doesShifts?: boolean; doesTravel?: boolean }) {
     return this.prisma.worker.create({
       data: {
         name: data.name,
-        email: data.email,
         color: data.color,
         doesShifts: data.doesShifts ?? false,
         doesTravel: data.doesTravel ?? false,
-        active: data.terminationDate ? false : undefined,
+        active: data.terminationDate ? false : true,
         hireDate: data.hireDate ? new Date(data.hireDate) : undefined,
         terminationDate: data.terminationDate ? new Date(data.terminationDate) : undefined,
       },
     });
   }
 
-  update(id: number, data: { name?: string; email?: string; color?: string; active?: boolean; hireDate?: string; terminationDate?: string; doesShifts?: boolean; doesTravel?: boolean }) {
+  update(id: number, data: { name?: string; color?: string; active?: boolean; hireDate?: string; terminationDate?: string; doesShifts?: boolean; doesTravel?: boolean }) {
     const active = data.terminationDate !== undefined
       ? (data.terminationDate ? false : (data.active ?? undefined))
       : data.active;

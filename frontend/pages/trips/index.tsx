@@ -783,7 +783,7 @@ export default function Trips() {
 
   useEffect(() => {
     try {
-      const roles = JSON.parse(localStorage.getItem('plantoes_roles') || '[]')
+      const roles = JSON.parse(localStorage.getItem('shifts_roles') || '[]')
       const hasControl = Array.isArray(roles) && (roles.includes('ADMIN') || roles.includes('Controla viagem') || roles.includes('adm/controla viagens') || roles.includes('adm'))
       setCanViewBoth(hasControl)
       setCanEdit(hasControl)

@@ -5,9 +5,9 @@ import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
 
 
+
 class CreateWorkerDto {
   name: string;
-  email?: string;
   color?: string;
   hireDate?: string;
   terminationDate?: string;
@@ -18,7 +18,6 @@ class CreateWorkerDto {
 
 class UpdateWorkerDto {
   name?: string;
-  email?: string;
   color?: string;
   active?: boolean;
   hireDate?: string;
