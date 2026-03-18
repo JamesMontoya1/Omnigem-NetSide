@@ -38,6 +38,15 @@ export class TripsService {
     if (payload.fuelExpense != null) {
       payload.fuelExpense = Number(payload.fuelExpense)
     }
+    // normalize vehicle-related fields if present
+    const vehicleFields = ['odometer', 'nextOilChange', 'lastAlignment', 'odometerAtLastAlignment', 'lastMaintenance']
+    const vehiclePayload: any = {}
+    for (const f of vehicleFields) {
+      if (payload[f] != null) {
+        if (f === 'lastAlignment' || f === 'lastMaintenance' || f === 'nextOilChange') vehiclePayload[f] = new Date(payload[f])
+        else vehiclePayload[f] = Number(payload[f])
+      }
+    }
     const citiesPayload: any[] = []
     if (payload.cities && Array.isArray(payload.cities)) {
       for (const c of payload.cities) {
@@ -85,9 +94,20 @@ export class TripsService {
     }
 
     try {
-      return await this.prisma.trip.create({ data: tripCreateData, include: { tripCities: { include: { city: true } }, vehicle: true, travelers: true, drivers: true, serviceType: true } } as any)
+      const created = await this.prisma.trip.create({ data: tripCreateData, include: { tripCities: { include: { city: true } }, vehicle: true, travelers: true, drivers: true, serviceType: true } } as any)
+      // if trip has a vehicle and vehicle payload fields were provided, update vehicle
+      if (created.vehicleId && Object.keys(vehiclePayload).length) {
+        try {
+          await this.prisma.vehicle.update({ where: { id: created.vehicleId }, data: vehiclePayload })
+          // reload created trip so vehicle reflects updated values
+          return await this.prisma.trip.findUnique({ where: { id: created.id }, include: { tripCities: { include: { city: true } }, vehicle: true, travelers: true, drivers: true, serviceType: true } } as any)
+        } catch (err: any) {
+          // if vehicle update fails, still return created trip but surface a warning via thrown error
+          throw new Error(`Trip created but failed updating vehicle: ${err?.message || String(err)}`)
+        }
+      }
+      return created
     } catch (err: any) {
-      // rethrow with more context for frontend debugging
       throw new Error(`Error creating trip: ${err?.message || String(err)}`)
     }
   }
@@ -96,6 +116,15 @@ export class TripsService {
     const payload: any = { ...data }
     if (payload.date) payload.date = new Date(payload.date)
     if (payload.endDate) payload.endDate = new Date(payload.endDate)
+    // normalize vehicle-related fields if present
+    const vehicleFields = ['odometer', 'nextOilChange', 'lastAlignment', 'odometerAtLastAlignment', 'lastMaintenance']
+    const vehiclePayload: any = {}
+    for (const f of vehicleFields) {
+      if (payload[f] != null) {
+        if (f === 'lastAlignment' || f === 'lastMaintenance' || f === 'nextOilChange') vehiclePayload[f] = new Date(payload[f])
+        else vehiclePayload[f] = Number(payload[f])
+      }
+    }
     const citiesPayload: any[] = []
     if (payload.cities && Array.isArray(payload.cities)) {
       for (const c of payload.cities) {
@@ -141,7 +170,21 @@ export class TripsService {
       payload.fuelExpense = Number(payload.fuelExpense)
     }
 
-    return this.prisma.trip.update({ where: { id }, data: payload, include: { tripCities: { include: { city: true } }, vehicle: true, travelers: true, drivers: true, serviceType: true } } as any)
+    const updated = await this.prisma.trip.update({ where: { id }, data: payload, include: { tripCities: { include: { city: true } }, vehicle: true, travelers: true, drivers: true, serviceType: true } } as any)
+
+    // determine vehicle id to update: prefer payload.vehicleId if provided, otherwise use updated.vehicleId
+    const vehicleIdToUpdate = payload.vehicleId ?? updated.vehicleId
+    if (vehicleIdToUpdate && Object.keys(vehiclePayload).length) {
+      try {
+        await this.prisma.vehicle.update({ where: { id: Number(vehicleIdToUpdate) }, data: vehiclePayload })
+        // reload and return trip with refreshed vehicle
+        return await this.prisma.trip.findUnique({ where: { id: updated.id }, include: { tripCities: { include: { city: true } }, vehicle: true, travelers: true, drivers: true, serviceType: true } } as any)
+      } catch (err: any) {
+        throw new Error(`Trip updated but failed updating vehicle: ${err?.message || String(err)}`)
+      }
+    }
+
+    return updated
   }
 
   async complete(id: number) {

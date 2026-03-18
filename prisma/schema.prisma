@@ -146,6 +146,14 @@ model Vehicle {
   id        Int      @id @default(autoincrement())
   plate     String?  @unique
   model     String?
+  
+  // informações que vão vir da tabela de viagens
+  odometer                Decimal?   // Odômetro na saída
+  nextOilChange           DateTime?   // próxima troca de óleo
+  lastAlignment           DateTime?  // última alinhamento
+  odometerAtLastAlignment Decimal?   // odômetro na última alinhamento
+  lastMaintenance         DateTime?  // última manutenção
+  
   notes     String?
   createdAt DateTime @default(now())
   trips     Trip[]
@@ -203,28 +211,41 @@ model TripCity {
 }
 
 model Trip {
-  id                   Int      @id @default(autoincrement())
-  vehicleId            Int?
-  vehicle              Vehicle? @relation(fields: [vehicleId], references: [id])
+  id                      Int      @id @default(autoincrement())
+
+  vehicleId               Int?
+  vehicle                 Vehicle? @relation(fields: [vehicleId], references: [id])
+  odometer                Decimal?   // Odômetro na saída
+  nextOilChange           DateTime?   // próxima troca de óleo
+  lastAlignment           DateTime?  // última alinhamento
+  odometerAtLastAlignment Decimal?   // odômetro na última alinhamento
+  lastMaintenance         DateTime?  // última manutenção
+
   date                 DateTime // Data de início da viagem
   startTime            String?  // Hora de início
+  endDate              DateTime?
+
   serviceTypeId        Int
   serviceType          ServiceType @relation(fields: [serviceTypeId], references: [id])
+
   mealExpense          Decimal? @default(0)
   fuelExpense          Decimal? @default(0)
   fuelInfo             String?
   extraExpense         Decimal? @default(0)
   extraInfo            String?
+
   kmDriven             Decimal? @default(0)
   costPerKm            Decimal? @default(0)
   profitPerKm          Decimal? @default(0)
   avgConsumption       Decimal?
+
   remainingAutonomy    Decimal?
-  completed            Boolean   @default(false)
-  endDate              DateTime?
+
   travelers            Worker[]  @relation("TravelerTrip")
   drivers              Worker[]  @relation("DriverTrip")
   note                 String?
+
+  completed            Boolean   @default(false)
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
 

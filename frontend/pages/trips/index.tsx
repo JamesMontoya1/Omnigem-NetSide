@@ -12,7 +12,9 @@ import CurrencyInput from '../../components/shared/CurrencyInput'
 import { num, formatTwo } from '../../components/shared/formatUtils'
 
 type City = { id: number; name: string; state?: string; country?: string }
-type Vehicle = { id: number; plate?: string; model?: string; notes?: string }
+type Vehicle = { id: number; plate?: string; model?: string; notes?: string;
+  odometer?: number | string; nextOilChange?: string | null; lastAlignment?: string | null;
+  odometerAtLastAlignment?: number | string; lastMaintenance?: string | null }
 type Worker = { id: number; name: string; doesTravel?: boolean; active?: boolean }
 type Trip = {
   id: number; date: string; cityId: number; city?: City; vehicleId?: number; vehicle?: Vehicle
@@ -132,7 +134,8 @@ export default function Trips() {
   const [editingCity, setEditingCity] = useState<City | null>(null)
 
   const [showVehicleModal, setShowVehicleModal] = useState(false)
-  const [vehicleForm, setVehicleForm] = useState({ plate: '', model: '', notes: '' })
+  const [vehicleForm, setVehicleForm] = useState({ plate: '', model: '', notes: '',
+    odometer: '', nextOilChange: '', lastAlignment: '', odometerAtLastAlignment: '', lastMaintenance: '' })
   const [editingVehicle, setEditingVehicle] = useState<Vehicle | null>(null)
 
   const [selectedVehicleId, setSelectedVehicleId] = useState<number | null>(null)
@@ -164,6 +167,7 @@ export default function Trips() {
   const pendingEditingRef = useRef<Trip | null>(null)
 
   const [hoveredRow, setHoveredRow] = useState<number | null>(null)
+  const [hoveredNotif, setHoveredNotif] = useState<number | null>(null)
   const [expandedIds, setExpandedIds] = useState<number[]>([])
 
   const [detailsTrip, setDetailsTrip] = useState<Trip | null>(null)
@@ -176,6 +180,10 @@ export default function Trips() {
   const [showCategoryModal, setShowCategoryModal] = useState(false)
   const [categoryForm, setCategoryForm] = useState({ name: '', description: '' })
   const [editingCategory, setEditingCategory] = useState<ExpenseCategory | null>(null)
+
+  const [showNotifications, setShowNotifications] = useState(false)
+  const notifRef = useRef<HTMLButtonElement | null>(null)
+  const [notifPos, setNotifPos] = useState<{ top: number; left: number } | null>(null)
 
   const [confirmDelete, setConfirmDelete] = useState<Trip | null>(null)
 
@@ -215,6 +223,19 @@ export default function Trips() {
     document.addEventListener('mousedown', onDoc)
     return () => document.removeEventListener('mousedown', onDoc)
   }, [])
+
+  useEffect(() => {
+    function onDoc(e: MouseEvent) {
+      if (!notifRef.current) return
+      if (!(e.target instanceof Node)) return
+      const pop = document.getElementById('notifications-popover')
+      if (notifRef.current.contains(e.target)) return
+      if (pop && pop.contains(e.target)) return
+      setShowNotifications(false)
+    }
+    if (showNotifications) document.addEventListener('mousedown', onDoc)
+    return () => document.removeEventListener('mousedown', onDoc)
+  }, [showNotifications])
 
   const calendarDays = useMemo(() => {
     const year = calMonth.getFullYear()
@@ -708,14 +729,32 @@ export default function Trips() {
     } catch { addToast('Erro ao excluir (pode ter viagens vinculadas)', 'error') }
   }
 
-  function openNewVehicle() { setEditingVehicle(null); setVehicleForm({ plate: '', model: '', notes: '' }); setShowVehicleModal(true) }
-  function openEditVehicle(v: Vehicle) { setEditingVehicle(v); setVehicleForm({ plate: v.plate ?? '', model: v.model ?? '', notes: v.notes ?? '' }); setShowVehicleModal(true) }
+  function openNewVehicle() { setEditingVehicle(null); setVehicleForm({ plate: '', model: '', notes: '', odometer: '', nextOilChange: '', lastAlignment: '', odometerAtLastAlignment: '', lastMaintenance: '' }); setShowVehicleModal(true) }
+  function openEditVehicle(v: Vehicle) {
+    setEditingVehicle(v)
+    setVehicleForm({
+      plate: v.plate ?? '', model: v.model ?? '', notes: v.notes ?? '',
+      odometer: v.odometer != null ? String(v.odometer) : '',
+      nextOilChange: v.nextOilChange ? toDateInput(String(v.nextOilChange)) : '',
+      odometerAtLastAlignment: v.odometerAtLastAlignment != null ? String(v.odometerAtLastAlignment) : '',
+      lastAlignment: v.lastAlignment ? toDateInput(v.lastAlignment) : '',
+      lastMaintenance: v.lastMaintenance ? toDateInput(v.lastMaintenance) : '',
+    })
+    setShowVehicleModal(true)
+  }
   async function handleSaveVehicle(e: React.FormEvent) {
     e.preventDefault()
     try {
+      const payload: any = { plate: vehicleForm.plate || null, model: vehicleForm.model || null, notes: vehicleForm.notes || null }
+      if (vehicleForm.odometer !== '') payload.odometer = Number(String(vehicleForm.odometer).replace(',', '.'))
+      if (vehicleForm.nextOilChange) payload.nextOilChange = new Date(vehicleForm.nextOilChange).toISOString()
+      if (vehicleForm.odometerAtLastAlignment !== '') payload.odometerAtLastAlignment = Number(String(vehicleForm.odometerAtLastAlignment).replace(',', '.'))
+      if (vehicleForm.lastAlignment) payload.lastAlignment = new Date(vehicleForm.lastAlignment).toISOString()
+      if (vehicleForm.lastMaintenance) payload.lastMaintenance = new Date(vehicleForm.lastMaintenance).toISOString()
+
       const url = editingVehicle ? `${API_BASE}/vehicles/${editingVehicle.id}` : `${API_BASE}/vehicles`
       const method = editingVehicle ? 'PUT' : 'POST'
-      const res = await fetch(url, { method, headers: jsonAuthHeaders(), body: JSON.stringify(vehicleForm) })
+      const res = await fetch(url, { method, headers: jsonAuthHeaders(), body: JSON.stringify(payload) })
       if (!res.ok) throw new Error('Erro')
       addToast(editingVehicle ? 'Veículo atualizado' : 'Veículo criado', 'success')
       setShowVehicleModal(false); await fetchVehicles()
@@ -1097,6 +1136,77 @@ export default function Trips() {
             </select>
           </div>
           <div style={{ flex: 1 }} />
+          {/* Notificações de viagens e manutenção */}
+          {(() => {
+            const tomorrow = new Date()
+            tomorrow.setDate(tomorrow.getDate() + 1)
+            const tt = isoDate(tomorrow)
+            const tripCount = trips.filter(tr => toDateInput(tr.date) === tt && !tr.completed).length
+
+            const today = new Date()
+            today.setHours(0, 0, 0, 0)
+            const msPerDay = 24 * 60 * 60 * 1000
+            const oilItems = (vehicles || []).filter(v => v.nextOilChange).map(v => {
+              const iso = toDateInput(String(v.nextOilChange))
+              const d = parseLocalDate(iso)
+              const diff = Math.ceil((d.getTime() - today.getTime()) / msPerDay)
+              return { v, d, diff }
+            }).filter(x => x.diff >= 0 && x.diff <= 30)
+            const oilCount = oilItems.length
+
+            const alignmentItems = (vehicles || []).filter(v => v.lastAlignment).map(v => {
+              const iso = toDateInput(String(v.lastAlignment))
+              const d0 = parseLocalDate(iso)
+              const d = new Date(d0.getFullYear(), d0.getMonth(), d0.getDate())
+              d.setDate(d.getDate() + 60)
+              const diff = Math.ceil((d.getTime() - today.getTime()) / msPerDay)
+              return { v, d, diff }
+            }).filter(x => x.diff >= 0 && x.diff <= 30)
+            const alignmentCount = alignmentItems.length
+
+            const maintenanceItems = (vehicles || []).filter(v => v.lastMaintenance).map(v => {
+              const iso = toDateInput(String(v.lastMaintenance))
+              const d0 = parseLocalDate(iso)
+              const d = new Date(d0.getFullYear(), d0.getMonth(), d0.getDate())
+              d.setDate(d.getDate() + 60)
+              const diff = Math.ceil((d.getTime() - today.getTime()) / msPerDay)
+              return { v, d, diff }
+            }).filter(x => x.diff >= 0 && x.diff <= 30)
+            const maintenanceCount = maintenanceItems.length
+
+            const count = tripCount + oilCount + alignmentCount + maintenanceCount
+
+            return (
+              <button
+                ref={notifRef}
+                type="button"
+                onClick={() => {
+                  if (showNotifications) { setShowNotifications(false); return }
+                  const rect = notifRef.current?.getBoundingClientRect()
+                  const popWidth = 520
+                  if (rect) {
+                    const left = Math.max(8, Math.min(rect.right - popWidth, window.innerWidth - popWidth - 8))
+                    setNotifPos({ top: rect.bottom + 8 + window.scrollY, left })
+                  }
+                  setShowNotifications(true)
+                }}
+                title="Notificações"
+                style={{
+                  ...btnNav,
+                  marginRight: 8,
+                  background: count > 0 ? PALETTE.success : PALETTE.hoverBg,
+                  color: PALETTE.textPrimary,
+                  border: `1px solid ${PALETTE.border}`,
+                  position: 'relative'
+                }}
+              >
+                🔔
+                {count > 0 && (
+                  <span style={{ position: 'absolute', top: -6, right: -6, minWidth: 18, height: 18, borderRadius: 9, background: '#FF3B30', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, padding: '0 6px' }}>{count}</span>
+                )}
+              </button>
+            )
+          })()}
           <button onClick={() => setTab('trips')} style={{
             ...btnNav,
             background: tab === 'trips' ? PALETTE.primary : PALETTE.hoverBg,
@@ -1772,16 +1882,32 @@ export default function Trips() {
                     </div>                    
                     <div>
                       <label style={labelStyle}>Veículo</label>
-                      <select
-                        value={(form as any).vehicleId || ''}
-                        onChange={e => setForm({ ...form, vehicleId: e.target.value })}
-                        style={selectStyle}
-                      >
-                        <option value="">Selecione...</option>
-                        {vehicles.map(v => (
-                          <option key={v.id} value={v.id}>{v.model ?? v.plate ?? v.id}</option>
-                        ))}
-                      </select>
+                      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                        <select
+                          value={(form as any).vehicleId || ''}
+                          onChange={e => setForm({ ...form, vehicleId: e.target.value })}
+                          style={{ ...selectStyle, flex: 1 }}
+                        >
+                          <option value="">Selecione...</option>
+                          {vehicles.map(v => (
+                            <option key={v.id} value={v.id}>{v.model ?? v.plate ?? v.id}</option>
+                          ))}
+                        </select>
+
+                        {editingTrip?.completed && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const vid = Number((form as any).vehicleId)
+                              if (!vid) { addToast('Selecione um veículo primeiro', 'error'); return }
+                              const v = vehicles.find(x => x.id === vid)
+                              if (!v) { addToast('Veículo não encontrado', 'error'); return }
+                              openEditVehicle(v)
+                            }}
+                            style={{ ...(btnSmall as any), padding: '6px 8px' }}
+                          >Editar</button>
+                        )}
+                      </div>
                     </div>
                     <div>
                       <label style={labelStyle}>Tipo *</label>
@@ -2001,7 +2127,6 @@ export default function Trips() {
                     <div style={{ marginTop: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
                       <label style={{ ...labelStyle, marginBottom: 0 }}>Cálculos</label>
-                      <div style={{ color: PALETTE.textSecondary, fontSize: 12 }}>calculado automaticamente</div>
                     </div>
                     <div />
                   </div>
@@ -2093,10 +2218,284 @@ export default function Trips() {
         </div>
       )}
 
+      {showNotifications && notifPos && (
+        <div id="notifications-popover" style={{ position: 'absolute', top: notifPos.top, left: notifPos.left, width: 520, zIndex: 2000 }}>
+          <div style={{
+              background: 'linear-gradient(rgb(22, 20, 20), rgb(53, 102, 151))',
+              border: `1px solid ${PALETTE.border}`,
+              borderRadius: 12,
+              padding: 10,
+              boxShadow: '0 20px 60px rgba(2,6,23,0.18), 0 8px 24px rgba(2,6,23,0.12)',
+              transform: 'translateY(0px)',
+              transition: 'transform 180ms ease, box-shadow 180ms ease',
+              willChange: 'transform, box-shadow',
+              maxHeight: '48vh',
+              overflowY: 'auto'
+            }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h3 style={{ margin: 0, fontSize: 16 }}>Notificações</h3>
+              <button type="button" onClick={() => setShowNotifications(false)} style={btnCancel as any}>X</button>
+            </div>
+
+            {/* Próximas viagens */}
+            <div style={{ marginTop: 8 }}>
+              <div style={{ color: PALETTE.textSecondary, marginBottom: 8 }}>Próximas viagens</div>
+              {(() => {
+                const tomorrow = new Date()
+                tomorrow.setDate(tomorrow.getDate() + 1)
+                const tt = isoDate(tomorrow)
+                const items = trips.filter(tr => toDateInput(tr.date) === tt && !tr.completed)
+                if (items.length === 0) return <div style={{ color: PALETTE.textSecondary }}>Nenhuma viagem para amanhã.</div>
+                return (
+                  <div style={{ display: 'grid', gap: 8 }}>
+                    {items.map(t => (
+                      <div
+                        key={t.id}
+                        onClick={() => {
+                          setShowNotifications(false)
+                          if (canEdit) {
+                            openEditTrip(t)
+                          } else {
+                            const d = parseLocalDate(toDateInput(t.date))
+                            setTripsView('calendar')
+                            setCalMonth(new Date(d.getFullYear(), d.getMonth(), 1))
+                            setSelectedDay(d)
+                            setPanelOpen(true)
+                          }
+                        }}
+                        onMouseEnter={() => setHoveredNotif(t.id)}
+                        onMouseLeave={() => setHoveredNotif(null)}
+                        role="button"
+                        tabIndex={0}
+                        style={{
+                          padding: 6,
+                          borderRadius: 6,
+                          background: PALETTE.cardBg,
+                          border: `1px solid ${PALETTE.border}`,
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 8,
+                          minHeight: 44,
+                          cursor: 'pointer',
+                          transition: 'transform 0.2s ease, filter 0.2s ease, box-shadow 0.2s ease',
+                          transform: hoveredNotif === t.id ? 'translateY(-1px)' : 'translateY(0px)',
+                          filter: hoveredNotif === t.id ? 'brightness(1.12)' : undefined,
+                          boxShadow: hoveredNotif === t.id ? '0 2px 8px rgba(0,0,0,0.35)' : 'none',
+                        }}
+                      >
+                        {(() => {
+                          const d = parseLocalDate(toDateInput(t.date))
+                          const dow = ['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'][d.getDay()]
+                          const equipe = Array.from(new Set([...(t.drivers || []).map((w: any) => w.name), ...(t.travelers || []).map((w: any) => w.name)])).join(', ') || '—'
+                          return (
+                            <>
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ fontWeight: 700, fontSize: 13, lineHeight: 1 }}>{t.serviceType?.name ?? 'Viagem'}</div>
+                                <div style={{ fontSize: 12, color: PALETTE.textSecondary, lineHeight: 1 }}>{dow} — {d.toLocaleDateString('pt-BR')} — {t.city?.name ?? '—'}</div>
+                              </div>
+                              <div style={{ width: 120, textAlign: 'right', fontSize: 12, color: PALETTE.textSecondary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{equipe}</div>
+                            </>
+                          )
+                        })()}
+                      </div>
+                    ))}
+                  </div>
+                )
+              })()}
+
+              {/* Seção: Trocas de óleo */}
+              <div style={{ marginTop: 12 }}>
+                <div style={{ color: PALETTE.textSecondary, marginBottom: 8 }}>Trocas de óleo</div>
+                {(() => {
+                  const today = new Date()
+                  today.setHours(0, 0, 0, 0)
+                  const msPerDay = 24 * 60 * 60 * 1000
+                  const oilItems = (vehicles || []).filter(v => v.nextOilChange).map(v => {
+                    const iso = toDateInput(String(v.nextOilChange))
+                    const d = parseLocalDate(iso)
+                    const diff = Math.ceil((d.getTime() - today.getTime()) / msPerDay)
+                    return { v, d, diff }
+                  }).filter(x => x.diff >= 0 && x.diff <= 30)
+
+                  if (oilItems.length === 0) return <div style={{ color: PALETTE.textSecondary }}>Nenhuma troca de óleo próxima.</div>
+
+                  return (
+                    <div style={{ display: 'grid', gap: 8 }}>
+                      {oilItems.map(({ v, d, diff }) => {
+                        const dow = ['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'][d.getDay()]
+                        const rightInfo = v.model || v.notes || '—'
+                        return (
+                          <div
+                            key={v.id}
+                            onClick={() => {
+                              setShowNotifications(false)
+                              if (canEdit) openEditVehicle(v)
+                            }}
+                            onMouseEnter={() => setHoveredNotif(v.id)}
+                            onMouseLeave={() => setHoveredNotif(null)}
+                            role="button"
+                            tabIndex={0}
+                            style={{
+                              padding: 6,
+                              borderRadius: 6,
+                              background: PALETTE.cardBg,
+                              border: `1px solid ${PALETTE.border}`,
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 8,
+                              minHeight: 44,
+                              cursor: 'pointer',
+                              transition: 'transform 0.2s ease, filter 0.2s ease, box-shadow 0.2s ease',
+                              transform: hoveredNotif === v.id ? 'translateY(-1px)' : 'translateY(0px)',
+                              filter: hoveredNotif === v.id ? 'brightness(1.12)' : undefined,
+                              boxShadow: hoveredNotif === v.id ? '0 2px 8px rgba(0,0,0,0.35)' : 'none',
+                            }}
+                          >
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontWeight: 700, fontSize: 13, lineHeight: 1 }}>{(v.model || v.plate) ? `${v.model ?? '—'} - ${v.plate ?? '—'}` : 'Veículo'}</div>
+                              <div style={{ fontSize: 12, color: PALETTE.textSecondary, lineHeight: 1 }}>{dow} - {d.toLocaleDateString('pt-BR')} - Troca de óleo</div>
+                            </div>
+                            <div style={{ display: 'flex', gap: 8, marginLeft: 8 }} />
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )
+                })()}
+              </div>
+              
+              {/* Seção: Manutenção */}
+              <div style={{ marginTop: 12 }}>
+                <div style={{ color: PALETTE.textSecondary, marginBottom: 8 }}>Manutenção</div>
+                {(() => {
+                  const today = new Date()
+                  today.setHours(0, 0, 0, 0)
+                  const msPerDay = 24 * 60 * 60 * 1000
+                  const maintItems = (vehicles || []).filter(v => v.lastMaintenance).map(v => {
+                    const iso = toDateInput(String(v.lastMaintenance))
+                    const d0 = parseLocalDate(iso)
+                    const d = new Date(d0.getFullYear(), d0.getMonth(), d0.getDate())
+                    d.setDate(d.getDate() + 60)
+                    const diff = Math.ceil((d.getTime() - today.getTime()) / msPerDay)
+                    return { v, d, diff }
+                  }).filter(x => x.diff >= 0 && x.diff <= 30)
+
+                  if (maintItems.length === 0) return <div style={{ color: PALETTE.textSecondary }}>Nenhuma manutenção próxima.</div>
+
+                  return (
+                    <div style={{ display: 'grid', gap: 8 }}>
+                      {maintItems.map(({ v, d, diff }) => {
+                        const dow = ['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'][d.getDay()]
+                        return (
+                          <div
+                            key={v.id}
+                            onClick={() => {
+                              setShowNotifications(false)
+                              if (canEdit) openEditVehicle(v)
+                            }}
+                            onMouseEnter={() => setHoveredNotif(v.id)}
+                            onMouseLeave={() => setHoveredNotif(null)}
+                            role="button"
+                            tabIndex={0}
+                            style={{
+                              padding: 6,
+                              borderRadius: 6,
+                              background: PALETTE.cardBg,
+                              border: `1px solid ${PALETTE.border}`,
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 8,
+                              minHeight: 44,
+                              cursor: 'pointer',
+                              transition: 'transform 0.2s ease, filter 0.2s ease, box-shadow 0.2s ease',
+                              transform: hoveredNotif === v.id ? 'translateY(-1px)' : 'translateY(0px)',
+                              filter: hoveredNotif === v.id ? 'brightness(1.12)' : undefined,
+                              boxShadow: hoveredNotif === v.id ? '0 2px 8px rgba(0,0,0,0.35)' : 'none',
+                            }}
+                          >
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontWeight: 700, fontSize: 13, lineHeight: 1 }}>{(v.model || v.plate) ? `${v.model ?? '—'} - ${v.plate ?? '—'}` : 'Veículo'}</div>
+                              <div style={{ fontSize: 12, color: PALETTE.textSecondary, lineHeight: 1 }}>{dow} - {d.toLocaleDateString('pt-BR')} - Manutenção</div>
+                            </div>
+                            <div style={{ display: 'flex', gap: 8, marginLeft: 8 }} />
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )
+                })()}
+              </div>
+
+              {/* Seção: Alinhamentos */}
+              <div style={{ marginTop: 12 }}>
+                <div style={{ color: PALETTE.textSecondary, marginBottom: 8 }}>Alinhamentos</div>
+                {(() => {
+                  const today = new Date()
+                  today.setHours(0, 0, 0, 0)
+                  const msPerDay = 24 * 60 * 60 * 1000
+                  const alignItems = (vehicles || []).filter(v => v.lastAlignment).map(v => {
+                    const iso = toDateInput(String(v.lastAlignment))
+                    const d0 = parseLocalDate(iso)
+                    const d = new Date(d0.getFullYear(), d0.getMonth(), d0.getDate())
+                    d.setDate(d.getDate() + 60)
+                    const diff = Math.ceil((d.getTime() - today.getTime()) / msPerDay)
+                    return { v, d, diff }
+                  }).filter(x => x.diff >= 0 && x.diff <= 30)
+
+                  if (alignItems.length === 0) return <div style={{ color: PALETTE.textSecondary }}>Nenhum alinhamento próximo.</div>
+
+                  return (
+                    <div style={{ display: 'grid', gap: 8 }}>
+                      {alignItems.map(({ v, d, diff }) => {
+                        const dow = ['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'][d.getDay()]
+                        return (
+                          <div
+                            key={v.id}
+                            onClick={() => {
+                              setShowNotifications(false)
+                              if (canEdit) openEditVehicle(v)
+                            }}
+                            onMouseEnter={() => setHoveredNotif(v.id)}
+                            onMouseLeave={() => setHoveredNotif(null)}
+                            role="button"
+                            tabIndex={0}
+                            style={{
+                              padding: 6,
+                              borderRadius: 6,
+                              background: PALETTE.cardBg,
+                              border: `1px solid ${PALETTE.border}`,
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 8,
+                              minHeight: 44,
+                              cursor: 'pointer',
+                              transition: 'transform 0.2s ease, filter 0.2s ease, box-shadow 0.2s ease',
+                              transform: hoveredNotif === v.id ? 'translateY(-1px)' : 'translateY(0px)',
+                              filter: hoveredNotif === v.id ? 'brightness(1.12)' : undefined,
+                              boxShadow: hoveredNotif === v.id ? '0 2px 8px rgba(0,0,0,0.35)' : 'none',
+                            }}
+                          >
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontWeight: 700, fontSize: 13, lineHeight: 1 }}>{(v.model || v.plate) ? `${v.model ?? '—'} - ${v.plate ?? '—'}` : 'Veículo'}</div>
+                              <div style={{ fontSize: 12, color: PALETTE.textSecondary, lineHeight: 1 }}>{dow} - {d.toLocaleDateString('pt-BR')} - Alinhamento</div>
+                            </div>
+                            <div style={{ display: 'flex', gap: 8, marginLeft: 8 }} />
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )
+                })()}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {pendingHolidayConfirm && (
         <div style={overlay} onClick={() => { setPendingHolidayConfirm(null); pendingPayloadRef.current = null; pendingEditingRef.current = null }}>
           <div style={modal} onClick={e => e.stopPropagation()}>
-            <h2 style={{ margin: 0, marginBottom: 8 }}>Confirmar feriado</h2>
+            <h2 style={{ margin: 0, marginBottom: 8 }}>Confirmar viagem para feriado{pendingHolidayConfirm.name ? ` — ${pendingHolidayConfirm.name}` : ''}?</h2>
             <div style={{ marginBottom: 12 }}>
               <div style={{ fontSize: 15, marginBottom: 6 }}>A data <strong>{pendingHolidayConfirm.date}</strong> é feriado{pendingHolidayConfirm.name ? ` — ${pendingHolidayConfirm.name}` : ''}.</div>
               <div style={{ color: '#666' }}>Deseja mesmo agendar a viagem nessa data?</div>
@@ -2492,14 +2891,44 @@ export default function Trips() {
             <h3 style={{ marginTop: 0 }}>{editingVehicle ? 'Editar Veículo' : 'Novo Veículo'}</h3>
             <form onSubmit={handleSaveVehicle}>
               <div style={{ display: 'grid', gap: 8 }}>
-                <div>
-                  <label style={labelStyle}>Modelo</label>
-                  <input value={vehicleForm.model} onChange={e => setVehicleForm({ ...vehicleForm, model: e.target.value })} style={inputStyle} placeholder="Ex: Fiat Strada" />
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                  <div>
+                    <label style={labelStyle}>Modelo</label>
+                    <input value={vehicleForm.model} onChange={e => setVehicleForm({ ...vehicleForm, model: e.target.value })} style={inputStyle} placeholder="Ex: Fiat Strada" />
+                  </div>
+                  <div>
+                    <label style={labelStyle}>Placa</label>
+                    <input value={vehicleForm.plate} onChange={e => setVehicleForm({ ...vehicleForm, plate: e.target.value })} style={inputStyle} placeholder="Ex: ABC-1234" />
+                  </div>
                 </div>
-                <div>
-                  <label style={labelStyle}>Placa</label>
-                  <input value={vehicleForm.plate} onChange={e => setVehicleForm({ ...vehicleForm, plate: e.target.value })} style={inputStyle} placeholder="Ex: ABC-1234" />
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                  <div>
+                    <label style={labelStyle}>Odômetro</label>
+                    <input type="number" step="0.01" value={vehicleForm.odometer as any} onChange={e => setVehicleForm({ ...vehicleForm, odometer: e.target.value })} style={inputStyle} />
+                  </div>
+                  <div>
+                    <label style={labelStyle}>Próxima troca de óleo</label>
+                    <input type="date" value={vehicleForm.nextOilChange as any} onChange={e => setVehicleForm({ ...vehicleForm, nextOilChange: e.target.value })} style={inputStyle} />
+                  </div>
                 </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                  <div>
+                    <label style={labelStyle}>Odômetro na última alinhamento</label>
+                    <input type="number" step="0.01" value={vehicleForm.odometerAtLastAlignment as any} onChange={e => setVehicleForm({ ...vehicleForm, odometerAtLastAlignment: e.target.value })} style={inputStyle} />
+                  </div>
+                  <div>
+                    <label style={labelStyle}>Última manutenção</label>
+                    <input type="date" value={vehicleForm.lastMaintenance as any} onChange={e => setVehicleForm({ ...vehicleForm, lastMaintenance: e.target.value })} style={inputStyle} />
+                  </div>
+                </div>
+
+                <div>
+                  <label style={labelStyle}>Último alinhamento</label>
+                  <input type="date" value={vehicleForm.lastAlignment as any} onChange={e => setVehicleForm({ ...vehicleForm, lastAlignment: e.target.value })} style={inputStyle} />
+                </div>
+
                 <div>
                   <label style={labelStyle}>Notas</label>
                   <textarea value={vehicleForm.notes} onChange={e => setVehicleForm({ ...vehicleForm, notes: e.target.value })} rows={2} style={{ ...inputStyle, resize: 'vertical' }} />
