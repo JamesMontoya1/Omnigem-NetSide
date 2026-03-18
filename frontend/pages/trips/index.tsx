@@ -8,6 +8,8 @@ import {
 } from '../../styles/theme'
 import { useToast } from '../../components/shared/ToastProvider'
 import WorkersContent from '../../components/shared/WorkersContent'
+import CurrencyInput from '../../components/shared/CurrencyInput'
+import { num, formatTwo } from '../../components/shared/formatUtils'
 
 type City = { id: number; name: string; state?: string; country?: string }
 type Vehicle = { id: number; plate?: string; model?: string; notes?: string }
@@ -53,20 +55,19 @@ const modal: React.CSSProperties = {
 const smallModal: React.CSSProperties = { ...modal, width: 420 }
 const moneyWrapper: React.CSSProperties = { position: 'relative' }
 
-function num(v: any): number | undefined { const n = Number(v); return isNaN(n) ? undefined : n }
 function toDateInput(iso: string) {
   if (!iso) return ''
   if (iso.includes('T')) return iso.split('T')[0]
   return iso.slice(0, 10)
 }
-function money(v: any) { const n = Number(v); return isNaN(n) || n === 0 ? '' : `R$ ${n.toFixed(2)}` }
-function decimal(v: any) { const n = Number(v); return isNaN(n) || n === 0 ? '' : n.toFixed(2) }
+function money(v: any) { const n = Number(String(v).replace(',', '.')); return isNaN(n) || n === 0 ? '' : `R$ ${n.toFixed(2)}` }
+function decimal(v: any) { const n = Number(String(v).replace(',', '.')); return isNaN(n) || n === 0 ? '' : n.toFixed(2) }
 function truncate(s: string | undefined, n = 80) { if (!s) return ''; return s.length > n ? s.slice(0, n) + '…' : s }
 
 function sumFuel(v: any): number {
   if (v == null) return 0
-  if (Array.isArray(v)) return v.reduce((s: number, x: any) => s + (Number(x) || 0), 0)
-  const n = Number(v)
+  if (Array.isArray(v)) return v.reduce((s: number, x: any) => s + (num(x) || 0), 0)
+  const n = Number(String(v).replace(',', '.'))
   return isNaN(n) ? 0 : n
 }
 
@@ -109,6 +110,7 @@ export default function Trips() {
   const [cities, setCities] = useState<City[]>([])
   const [vehicles, setVehicles] = useState<Vehicle[]>([])
   const [workers, setWorkers] = useState<Worker[]>([])
+  const [holidays, setHolidays] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
 
   const [filterStart, setFilterStart] = useState('')
@@ -151,7 +153,15 @@ export default function Trips() {
   const [showManageVehicles, setShowManageVehicles] = useState(false)
   const [showManageWorkers, setShowManageWorkers] = useState(false)
   const [showCitiesClientsModal, setShowCitiesClientsModal] = useState(false)
+  const [infoModal, setInfoModal] = useState<{ open: boolean; ci: number; idx: number; value: string } | null>(null)
   const [showCategories, setShowCategories] = useState(false)
+
+  const [showClientInfoModal, setShowClientInfoModal] = useState(false)
+  const [clientInfoContent, setClientInfoContent] = useState<{ title?: string; text: string } | null>(null)
+  const [holidayModalData, setHolidayModalData] = useState<any[] | null>(null)
+  const [pendingHolidayConfirm, setPendingHolidayConfirm] = useState<{ name?: string; date: string } | null>(null)
+  const pendingPayloadRef = useRef<any | null>(null)
+  const pendingEditingRef = useRef<Trip | null>(null)
 
   const [hoveredRow, setHoveredRow] = useState<number | null>(null)
   const [expandedIds, setExpandedIds] = useState<number[]>([])
@@ -192,6 +202,19 @@ export default function Trips() {
       setPanelOpen(false)
     }
   }, [selectedDay])
+
+  const [showBurger, setShowBurger] = useState(false)
+  const burgerRef = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    function onDoc(e: MouseEvent) {
+      if (!burgerRef.current) return
+      if (!(e.target instanceof Node)) return
+      if (!burgerRef.current.contains(e.target)) setShowBurger(false)
+    }
+    document.addEventListener('mousedown', onDoc)
+    return () => document.removeEventListener('mousedown', onDoc)
+  }, [])
 
   const calendarDays = useMemo(() => {
     const year = calMonth.getFullYear()
@@ -254,6 +277,15 @@ export default function Trips() {
   const fetchTrips = useCallback(async () => {
     setLoading(true)
     try {
+      try {
+        const hRes = await fetch(`${API_BASE}/holidays`, { headers: authHeaders() })
+        if (hRes.ok) {
+          const hList: any[] = await hRes.json()
+          setHolidays(hList)
+        }
+      } catch (e) {
+        console.error('Erro ao verificar feriados', e)
+      }
       const params = new URLSearchParams()
       if (filterStart) params.set('startDate', filterStart)
       if (filterEnd) params.set('endDate', filterEnd)
@@ -346,7 +378,7 @@ export default function Trips() {
 
   function openNewTrip() {
     setEditingTrip(null)
-    setForm({ ...EMPTY_FORM, startTime: '', mealExpense: defaultMealExpense != null ? String(defaultMealExpense) : '' })
+    setForm({ ...EMPTY_FORM, startTime: '', mealExpense: defaultMealExpense != null ? formatTwo(defaultMealExpense) : '' })
     setMealEdited(false)
     setSkipInitialCalc(true)
     setShowTripModal(true)
@@ -355,7 +387,7 @@ export default function Trips() {
   function openEditTrip(t: Trip) {
     setEditingTrip(t)
     const kmDriven = t.kmDriven ?? 0
-    const totalExp = (Number(t.mealExpense) || 0) + sumFuel((t as any).fuelExpense) + (Number(t.extraExpense) || 0)
+    const totalExp = (num(t.mealExpense) || 0) + sumFuel((t as any).fuelExpense) + (num(t.extraExpense) || 0)
     let clientsForForm: any[] = []
     if ((t as any).client && Array.isArray((t as any).client)) {
       const names = (t as any).client as any[]
@@ -377,7 +409,7 @@ export default function Trips() {
       computedPriceVal = (t as any).tripCities.reduce((sum: number, tc: any) => {
         if (Array.isArray(tc.clients) && tc.clients.length > 0) {
           for (let idx = 0; idx < tc.clients.length; idx++) {
-            const p = tc.prices && tc.prices[idx] != null ? Number(tc.prices[idx]) : 0
+            const p = tc.prices && tc.prices[idx] != null ? num(tc.prices[idx]) || 0 : 0
             sum += (p || 0)
           }
         }
@@ -385,8 +417,8 @@ export default function Trips() {
       }, 0)
     } else {
       computedPriceVal = clientsForForm.length > 0
-        ? clientsForForm.reduce((s: number, c: any) => s + (Number(c.price) || 0), 0)
-        : (Number(t.price) || 0)
+        ? clientsForForm.reduce((s: number, c: any) => s + (num(c.price) || 0), 0)
+        : (num(t.price) || 0)
     }
       const computedCost = kmDriven > 0 ? (totalExp / kmDriven) : undefined
     const computedProfit = kmDriven > 0 ? ((computedPriceVal - totalExp) / kmDriven) : undefined
@@ -394,8 +426,8 @@ export default function Trips() {
 
     const travelerCount = t.travelers?.length ?? 0
     const mealExpenseForForm = t.mealExpense != null
-      ? String(t.mealExpense)
-      : (defaultMealExpense != null && travelerCount > 0 ? String(defaultMealExpense * travelerCount) : '')
+      ? formatTwo(t.mealExpense)
+      : (defaultMealExpense != null && travelerCount > 0 ? formatTwo(defaultMealExpense * travelerCount) : '')
 
     setForm({
       date: toDateInput(t.date),
@@ -408,16 +440,16 @@ export default function Trips() {
       serviceTypeId: t.serviceTypeId ? String(t.serviceTypeId) : '',
       price: t.price != null ? String(t.price) : '',
       mealExpense: mealExpenseForForm,
-      fuelExpense: t.fuelExpense != null ? String(sumFuel((t as any).fuelExpense)) : '',
+      fuelExpense: t.fuelExpense != null ? formatTwo(sumFuel((t as any).fuelExpense)) : '',
       fuelInfo: (t as any).fuelInfo ?? '',
-      extraExpense: t.extraExpense != null ? String(t.extraExpense) : '',
+      extraExpense: t.extraExpense != null ? formatTwo(t.extraExpense) : '',
       extraInfo: t.extraInfo ?? '',
-      kmDriven: t.kmDriven != null ? String(t.kmDriven) : '',
-      costPerKm: t.costPerKm != null ? String(t.costPerKm) : (computedCost != null ? String(Number(computedCost).toFixed(2)) : ''),
-      profitPerKm: t.profitPerKm != null ? String(t.profitPerKm) : (computedProfit != null ? String(Number(computedProfit).toFixed(2)) : ''),
-      avgConsumption: t.avgConsumption != null ? String(t.avgConsumption) : '',
-      remainingAutonomy: t.remainingAutonomy != null ? String(t.remainingAutonomy) : '',
-      total: String(Number(computedTotalValue).toFixed(2)),
+      kmDriven: t.kmDriven != null ? formatTwo(t.kmDriven) : '',
+      costPerKm: t.costPerKm != null ? formatTwo(t.costPerKm) : (computedCost != null ? formatTwo(Number(computedCost)) : ''),
+      profitPerKm: t.profitPerKm != null ? formatTwo(t.profitPerKm) : (computedProfit != null ? formatTwo(Number(computedProfit)) : ''),
+      avgConsumption: t.avgConsumption != null ? formatTwo(t.avgConsumption) : '',
+      remainingAutonomy: t.remainingAutonomy != null ? formatTwo(t.remainingAutonomy) : '',
+      total: formatTwo(Number(computedTotalValue)),
       travelerIds: t.travelers?.map(w => w.id) ?? [],
       driverIds: t.drivers?.map(w => w.id) ?? [],
       note: t.note ?? '',
@@ -432,22 +464,22 @@ export default function Trips() {
 
   function handleRecalculate() {
     if (!editingTrip?.completed) return
-    const meal = Number(form.mealExpense) || 0
-      const fuel = Number(form.fuelExpense) || 0
-    const extra = Number(form.extraExpense) || 0
-    const km = Number(form.kmDriven) || 0
+    const meal = num(form.mealExpense) || 0
+      const fuel = num(form.fuelExpense) || 0
+    const extra = num(form.extraExpense) || 0
+    const km = num(form.kmDriven) || 0
     let price = 0
     if ((form as any).cities && Array.isArray((form as any).cities) && (form as any).cities.length > 0) {
       price = (form as any).cities.reduce((s: number, cb: any) => {
         if (Array.isArray(cb.clients) && cb.clients.length > 0) {
-          return s + cb.clients.reduce((ss: number, c: any) => ss + (Number(c.price) || 0), 0)
+          return s + cb.clients.reduce((ss: number, c: any) => ss + (num(c.price) || 0), 0)
         }
         return s
       }, 0)
     } else if ((form as any).clients && Array.isArray((form as any).clients)) {
-      price = (form as any).clients.reduce((s: number, c: any) => s + (Number(c.price) || 0), 0)
+      price = (form as any).clients.reduce((s: number, c: any) => s + (num(c.price) || 0), 0)
     } else {
-      price = Number(form.price) || 0
+      price = num(form.price) || 0
     }
     const computedTotal = price - (meal + fuel + extra)
     const totalDisplay = String(Number(computedTotal).toFixed(2))
@@ -466,20 +498,20 @@ export default function Trips() {
     if (!showTripModal) return
     if (skipInitialCalc) { setSkipInitialCalc(false); return }
     if (!editingTrip?.completed) return
-    const meal = Number(form.mealExpense) || 0
-    const fuel = Number(form.fuelExpense) || 0
-    const extra = Number(form.extraExpense) || 0
-    const km = Number(form.kmDriven) || 0
+    const meal = num(form.mealExpense) || 0
+    const fuel = num(form.fuelExpense) || 0
+    const extra = num(form.extraExpense) || 0
+    const km = num(form.kmDriven) || 0
     let price = 0
     if ((form as any).cities && Array.isArray((form as any).cities) && (form as any).cities.length > 0) {
       price = (form as any).cities.reduce((s: number, cb: any) => {
-        if (Array.isArray(cb.clients) && cb.clients.length > 0) return s + cb.clients.reduce((ss: number, c: any) => ss + (Number(c.price) || 0), 0)
+        if (Array.isArray(cb.clients) && cb.clients.length > 0) return s + cb.clients.reduce((ss: number, c: any) => ss + (num(c.price) || 0), 0)
         return s
       }, 0)
     } else if ((form as any).clients && Array.isArray((form as any).clients)) {
-      price = (form as any).clients.reduce((s: number, c: any) => s + (Number(c.price) || 0), 0)
+      price = (form as any).clients.reduce((s: number, c: any) => s + (num(c.price) || 0), 0)
     } else {
-      price = Number(form.price) || 0
+      price = num(form.price) || 0
     }
     const computedTotal = price - (meal + fuel + extra)
     const displayTotal = String(Number(computedTotal).toFixed(2))
@@ -503,11 +535,11 @@ export default function Trips() {
     let totalPriceForCalc = 0
     if ((form as any).cities && Array.isArray((form as any).cities) && (form as any).cities.length > 0) {
       totalPriceForCalc = (form as any).cities.reduce((s: number, cb: any) => {
-        if (Array.isArray(cb.clients) && cb.clients.length > 0) return s + cb.clients.reduce((ss: number, c: any) => ss + (Number(c.price) || 0), 0)
+        if (Array.isArray(cb.clients) && cb.clients.length > 0) return s + cb.clients.reduce((ss: number, c: any) => ss + (num(c.price) || 0), 0)
         return s
       }, 0)
     } else if ((form as any).clients && Array.isArray((form as any).clients)) {
-      totalPriceForCalc = (form as any).clients.reduce((s: number, c: any) => s + (Number(c.price) || 0), 0)
+      totalPriceForCalc = (form as any).clients.reduce((s: number, c: any) => s + (num(c.price) || 0), 0)
     } else {
       totalPriceForCalc = (num(form.price) || 0)
     }
@@ -558,8 +590,11 @@ export default function Trips() {
       if (!payload.cities) payload.price = num(form.price) ?? null
     }
 
-    if (editingTrip?.completed) {
+    if (!editingTrip || editingTrip?.completed || (form.mealExpense !== '' && form.mealExpense != null)) {
       payload.mealExpense = num(form.mealExpense)
+    }
+
+    if (editingTrip?.completed) {
       payload.fuelExpense = (form.fuelExpense !== '' && form.fuelExpense != null) ? num(form.fuelExpense) : null
       payload.fuelInfo = form.fuelInfo || null
       payload.extraExpense = num(form.extraExpense)
@@ -571,14 +606,49 @@ export default function Trips() {
       payload.remainingAutonomy = num(form.remainingAutonomy)
     }
     try {
-      const url = editingTrip ? `${API_BASE}/trips/${editingTrip.id}` : `${API_BASE}/trips`
-      const method = editingTrip ? 'PUT' : 'POST'
+      // verifica se a data é feriado; se for, mostra modal bonitinho em vez de confirm()
+      try {
+        let hList = holidays
+        if (!hList || (Array.isArray(hList) && hList.length === 0)) {
+          const hRes = await fetch(`${API_BASE}/holidays`, { headers: authHeaders() })
+          if (hRes.ok) {
+            hList = await hRes.json()
+            setHolidays(hList)
+          }
+        }
+        const found = (hList || []).find(h => {
+          const hd = toDateInput(h.date)
+          if (h.recurring) return hd.slice(5) === (form.date || '').slice(5)
+          return hd === (form.date || '')
+        })
+        if (found) {
+          pendingPayloadRef.current = payload
+          pendingEditingRef.current = editingTrip ?? null
+          setPendingHolidayConfirm({ name: found.name, date: form.date })
+          return
+        }
+      } catch (e) {
+        console.error('Erro ao verificar feriados antes de salvar', e)
+      }
+      await performSave(payload, editingTrip ?? null)
+    } catch (err: any) { addToast(err?.message || 'Erro ao salvar', 'error') }
+  }
+
+  async function performSave(payload: any, editing: Trip | null) {
+    try {
+      const url = editing ? `${API_BASE}/trips/${editing.id}` : `${API_BASE}/trips`
+      const method = editing ? 'PUT' : 'POST'
       const res = await fetch(url, { method, headers: jsonAuthHeaders(), body: JSON.stringify(payload) })
       if (!res.ok) { const e = await res.json().catch(() => null); throw new Error(e?.message || 'Erro') }
-      addToast(editingTrip ? 'Viagem atualizada' : 'Viagem criada', 'success')
+      addToast(editing ? 'Viagem atualizada' : 'Viagem criada', 'success')
       setShowTripModal(false)
+      setPendingHolidayConfirm(null)
+      pendingPayloadRef.current = null
+      pendingEditingRef.current = null
       await fetchTrips()
-    } catch (err: any) { addToast(err?.message || 'Erro ao salvar', 'error') }
+    } catch (err: any) {
+      addToast(err?.message || 'Erro ao salvar', 'error')
+    }
   }
 
   async function handleDeleteTrip() {
@@ -665,7 +735,7 @@ export default function Trips() {
     if (!selectedVehicleId) return
     try {
       const payload: any = { vehicleId: selectedVehicleId, workerId: expenseForm.workerId ? Number(expenseForm.workerId) : null }
-      if (expenseForm.amount) payload.amount = Number(expenseForm.amount)
+      if (expenseForm.amount) payload.amount = num(expenseForm.amount)
       if (expenseForm.odometer) payload.odometer = Number(expenseForm.odometer)
       if (expenseForm.date) payload.date = expenseForm.date
       if (expenseForm.notes) payload.notes = expenseForm.notes
@@ -745,19 +815,7 @@ export default function Trips() {
 
   const filtered = (() => {
     const base = trips.filter(isTripVisible)
-
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
-
-    const future = base
-      .filter(t => parseLocalDate(toDateInput(t.date)).getTime() >= today.getTime())
-      .sort((a, b) => parseLocalDate(toDateInput(a.date)).getTime() - parseLocalDate(toDateInput(b.date)).getTime())
-
-    const past = base
-      .filter(t => parseLocalDate(toDateInput(t.date)).getTime() < today.getTime())
-      .sort((a, b) => parseLocalDate(toDateInput(b.date)).getTime() - parseLocalDate(toDateInput(a.date)).getTime())
-
-    return [...future, ...past]
+    return base.sort((a, b) => parseLocalDate(toDateInput(a.date)).getTime() - parseLocalDate(toDateInput(b.date)).getTime())
   })()
 
   function toggleTraveler(wid: number) {
@@ -766,14 +824,12 @@ export default function Trips() {
       const travelerIds = removed ? f.travelerIds.filter(x => x !== wid) : [...f.travelerIds, wid]
       const driverIds = removed ? (f.driverIds || []).filter(x => x !== wid) : f.driverIds
       let mealExpense = f.mealExpense
-      // Recalculate meal expense always when travelers change (based on default per-worker value)
       if (defaultMealExpense != null) {
         const total = defaultMealExpense * travelerIds.length
         mealExpense = total ? String(total) : ''
       }
       return { ...f, travelerIds, driverIds, mealExpense }
     })
-    // mark as not manually edited so further toggles keep recalculating
     setMealEdited(false)
   }
 
@@ -818,9 +874,9 @@ export default function Trips() {
           </thead>
           <tbody>
             {list.map((t, i) => {
-              const totalExpense = (Number(t.mealExpense) || 0) + sumFuel((t as any).fuelExpense) + (Number(t.extraExpense) || 0)
+              const totalExpense = (num(t.mealExpense) || 0) + sumFuel((t as any).fuelExpense) + (num(t.extraExpense) || 0)
               const expenseStr = money(totalExpense)
-              const km = Number(t.kmDriven) || 0
+              const km = num(t.kmDriven) || 0
               const clientsArr: { name: string; price: number; info?: string }[] = ((): any[] => {
                 if (Array.isArray((t as any).tripCities) && (t as any).tripCities.length > 0) {
                   const agg: any[] = []
@@ -829,22 +885,22 @@ export default function Trips() {
                       const prices = Array.isArray(tc.prices) ? tc.prices : []
                       const infos = Array.isArray(tc.information) ? tc.information : []
                       for (let idx = 0; idx < tc.clients.length; idx++) {
-                        agg.push({ name: tc.clients[idx] ?? '', price: prices[idx] != null ? Number(prices[idx]) : 0, info: infos[idx] ?? '' })
+                        agg.push({ name: tc.clients[idx] ?? '', price: prices[idx] != null ? num(prices[idx]) || 0 : 0, info: infos[idx] ?? '' })
                       }
                     }
                   }
                   if (agg.length > 0) return agg
                 }
                 if ((t as any).clients && Array.isArray((t as any).clients)) {
-                  return (t as any).clients.map((c: any) => ({ name: c.name ?? '', price: Number(c.price) || 0, info: c.info ?? '' }))
+                  return (t as any).clients.map((c: any) => ({ name: c.name ?? '', price: num(c.price) || 0, info: c.info ?? '' }))
                 }
                 if ((t as any).client && Array.isArray((t as any).client)) {
                   const names = (t as any).client as any[]
                   const prices = Array.isArray((t as any).price) ? (t as any).price as any[] : []
                   const infos = Array.isArray((t as any).informationPrice) ? (t as any).informationPrice as any[] : []
-                  return names.map((name: any, idx: number) => ({ name: name ?? '', price: prices[idx] != null ? Number(prices[idx]) : 0, info: infos[idx] ?? '' }))
+                  return names.map((name: any, idx: number) => ({ name: name ?? '', price: prices[idx] != null ? num(prices[idx]) || 0 : 0, info: infos[idx] ?? '' }))
                 }
-                return [{ name: typeof (t as any).client === 'string' ? (t as any).client : '', price: Number(t.price) || 0, info: '' }]
+                return [{ name: typeof (t as any).client === 'string' ? (t as any).client : '', price: num(t.price) || 0, info: '' }]
               })()
               const routeStr = (() => {
                 if (Array.isArray((t as any).tripCities) && (t as any).tripCities.length > 0) {
@@ -858,22 +914,24 @@ export default function Trips() {
                 priceVal = (t as any).tripCities.reduce((sum: number, tc: any) => {
                   if (Array.isArray(tc.clients) && tc.clients.length > 0) {
                     for (let idx = 0; idx < tc.clients.length; idx++) {
-                      const p = tc.prices && tc.prices[idx] != null ? Number(tc.prices[idx]) : 0
+                      const p = tc.prices && tc.prices[idx] != null ? num(tc.prices[idx]) || 0 : 0
                       sum += (p || 0)
                     }
                   }
                   return sum
                 }, 0)
               } else {
-                priceVal = clientsArr.reduce((s: number, c: any) => s + (Number(c.price) || 0), 0)
+                priceVal = clientsArr.reduce((s: number, c: any) => s + (num(c.price) || 0), 0)
               }
-              const computedCostPerKm = t.costPerKm != null ? Number(t.costPerKm) : (km > 0 ? totalExpense / km : 0)
+              const computedCostPerKm = t.costPerKm != null ? num(t.costPerKm) || 0 : (km > 0 ? totalExpense / km : 0)
               const costPerKmStr = money(computedCostPerKm)
-              const computedProfitPerKm = t.profitPerKm != null ? Number(t.profitPerKm) : (km > 0 ? ((priceVal - totalExpense) / km) : 0)
+              const computedProfitPerKm = t.profitPerKm != null ? num(t.profitPerKm) || 0 : (km > 0 ? ((priceVal - totalExpense) / km) : 0)
               const profitPerKmStr = money(computedProfitPerKm)
               const computedTotalValue = priceVal - totalExpense
               const totalCostStr = money(computedTotalValue)
-              const rowBg = hoveredRow === t.id ? PALETTE.hoverBg : (i % 2 === 0 ? PALETTE.cardBg : PALETTE.hoverBg)
+              const rowBg = expandedIds.includes(t.id)
+                ? PALETTE.rowOpen
+                : (hoveredRow === t.id ? PALETTE.rowHover : (i % 2 === 0 ? PALETTE.cardBg : PALETTE.hoverBg))
               return (
                 <React.Fragment key={t.id}>
                 <tr onClick={() => canEdit ? openEditTrip(t) : undefined} onMouseEnter={() => setHoveredRow(t.id)} onMouseLeave={() => setHoveredRow(null)} style={{ cursor: canEdit ? 'pointer' : 'default', borderBottom: `1px solid ${PALETTE.border}`, background: rowBg, transition: 'background 120ms ease' }}>
@@ -915,7 +973,6 @@ export default function Trips() {
                   <tr key={`exp-${t.id}`} style={{ background: PALETTE.backgroundSecondary }}>
                     <td colSpan={5} style={{ padding: 12, borderBottom: `1px solid ${PALETTE.border}` }}>
                       <div style={{ marginTop: 8 }}>
-                        <strong>Clientes:</strong>
                         <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 8 }}>
                           {Array.isArray((t as any).tripCities) && (t as any).tripCities.length > 0 ? (
                             (t as any).tripCities.map((tc: any, tcIdx: number) => (
@@ -924,14 +981,21 @@ export default function Trips() {
                                 <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 6 }}>
                                   {Array.isArray(tc.clients) && tc.clients.length > 0 ? (
                                     tc.clients.map((name: any, cidx: number) => {
-                                      const price = tc.prices && tc.prices[cidx] != null ? Number(tc.prices[cidx]) : 0
+                                      const price = tc.prices && tc.prices[cidx] != null ? num(tc.prices[cidx]) || 0 : 0
                                       const info = tc.information && tc.information[cidx] ? tc.information[cidx] : ''
                                       return (
                                         <div key={cidx} style={{ display: 'flex', gap: 12 }}>
                                           <div style={{ minWidth: 200, display: 'flex', alignItems: 'center', gap: 8 }}>
                                             <strong>{name || '—'}</strong>
                                             <span style={{ color: PALETTE.textSecondary }}>{money(price) || '-'}</span>
-                                            {info ? <span style={{ color: PALETTE.textSecondary }}>— {truncate(info, 80)}</span> : null}
+                                            {info ? (
+                                              <span style={{ color: PALETTE.textSecondary }}>
+                                                — {truncate(info, 80)}
+                                                {info.length > 80 ? (
+                                                  <button type="button" onClick={(e) => { e.stopPropagation(); setClientInfoContent({ title: name, text: info }); setShowClientInfoModal(true) }} style={{ ...(btnSmallBlue as any), marginLeft: 8, padding: '6px 8px', fontSize: 12 }}>🔍</button>
+                                                ) : null}
+                                              </span>
+                                            ) : null}
                                           </div>
                                         </div>
                                       )
@@ -958,7 +1022,14 @@ export default function Trips() {
                                   <div style={{ minWidth: 200, display: 'flex', alignItems: 'center', gap: 8 }}>
                                     <strong>{c.name || '—'}</strong>
                                     <span style={{ color: PALETTE.textSecondary }}>{money(c.price) || '-'}</span>
-                                    {c.info ? <span style={{ color: PALETTE.textSecondary }}>— {truncate(c.info, 80)}</span> : null}
+                                    {c.info ? (
+                                      <span style={{ color: PALETTE.textSecondary }}>
+                                        — {truncate(c.info, 80)}
+                                        {c.info.length > 80 ? (
+                                          <button type="button" onClick={(e) => { e.stopPropagation(); setClientInfoContent({ title: c.name, text: c.info }); setShowClientInfoModal(true) }} style={{ ...(btnSmallBlue as any), marginLeft: 8, padding: '6px 8px', fontSize: 12 }}>🔍</button>
+                                        ) : null}
+                                      </span>
+                                    ) : null}
                                   </div>
                                 </div>
                               ))}
@@ -969,14 +1040,16 @@ export default function Trips() {
 
                       <div style={{ height: 1, background: PALETTE.border, margin: '8px 0' }} />
 
-                      <div style={{ marginTop: 8 }}>
-                        <strong>Valores por km:</strong>
-                        <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 6 }}>
-                          <div style={{ fontSize: 13 }}><strong>Custo/km (R$):</strong> {costPerKmStr || '-'}</div>
-                          <div style={{ fontSize: 13 }}><strong>Lucro/km (R$):</strong> {profitPerKmStr || '-'}</div>
-                          <div style={{ fontSize: 13 }}><strong>Custo total:</strong> {totalCostStr || expenseStr || '-'}</div>
+                      {canViewBoth && t.completed && (
+                        <div style={{ marginTop: 8 }}>
+                          <strong>Valores por km:</strong>
+                          <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                            <div style={{ fontSize: 13 }}><strong>Custo/km (R$):</strong> {costPerKmStr || '-'}</div>
+                            <div style={{ fontSize: 13 }}><strong>Lucro/km (R$):</strong> {profitPerKmStr || '-'}</div>
+                            <div style={{ fontSize: 13 }}><strong>Custo total:</strong> {totalCostStr || expenseStr || '-'}</div>
+                          </div>
                         </div>
-                      </div>
+                      )}
                     </td>
                   </tr>
                 )}
@@ -995,8 +1068,7 @@ export default function Trips() {
         <div style={{ padding: '16px 24px', display: 'flex', alignItems: 'center', gap: 16, borderBottom: `1px solid ${PALETTE.border}`, marginBottom: 12 }}>
           <button onClick={() => router.push('/selection')} style={btnNav}>← Voltar</button>
           <h2 style={{ margin: 0, fontSize: 22 }}>Viagens</h2>
-          {canEdit && <button type="button" onClick={() => setShowManageWorkers(true)} style={btnNav}>Trabalhadores</button>}
-          {canEdit && <button type="button" onClick={() => setShowSettingsModal(true)} style={btnNav}>Padrões</button>}
+          {canEdit && <button type="button" onClick={() => setShowManageWorkers(true)} style={btnNav}>👷 Trabalhadores</button>}
           <button
             type="button"
             onClick={() => setTripsView(v => v === 'list' ? 'calendar' : 'list')}
@@ -1014,7 +1086,6 @@ export default function Trips() {
             📅 Calendário
           </button>
           {canEdit && <button onClick={openNewTrip} style={{ ...btnNav, background: PALETTE.success, color: '#fff', border: 'none' }}>+ Nova Viagem</button>}
-          {/** Filtro global por trabalhador */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 8 }}>
             <select
               value={filterWorker}
@@ -1026,17 +1097,89 @@ export default function Trips() {
             </select>
           </div>
           <div style={{ flex: 1 }} />
-          {(['trips', 'cities', 'vehicles', 'serviceTypes'] as const).map(t => (
-            <button key={t} onClick={() => setTab(t)} style={{
-              ...btnNav,
-              background: tab === t ? PALETTE.primary : PALETTE.hoverBg,
-              color: tab === t ? '#fff' : PALETTE.textPrimary,
-              border: tab === t ? 'none' : `1px solid ${PALETTE.border}`,
-              fontWeight: tab === t ? 700 : 400,
-            }}>
-              {t === 'trips' ? 'Viagens' : t === 'cities' ? 'Cidades' : t === 'vehicles' ? 'Veículos' : 'Tipos'}
+          <button onClick={() => setTab('trips')} style={{
+            ...btnNav,
+            background: tab === 'trips' ? PALETTE.primary : PALETTE.hoverBg,
+            color: tab === 'trips' ? '#fff' : PALETTE.textPrimary,
+            border: tab === 'trips' ? 'none' : `1px solid ${PALETTE.border}`,
+            fontWeight: tab === 'trips' ? 700 : 400,
+            marginRight: 8,
+          }}>📅 Viagens</button>
+          <div style={{ position: 'relative' }} ref={burgerRef as any}>
+            <button
+              type="button"
+              onClick={() => setShowBurger(s => !s)}
+              aria-expanded={showBurger}
+              style={{ ...btnNav, display: 'flex', alignItems: 'center', gap: 8 }}
+            >
+              ☰ Menu
             </button>
-          ))}
+            {showBurger && (
+              <div style={{ position: 'absolute', right: 0, top: 'calc(100% + 8px)', background: PALETTE.cardBg, border: `1px solid ${PALETTE.border}`, boxShadow: '0 8px 20px rgba(0,0,0,0.08)', borderRadius: 8, padding: 8, zIndex: 2000 }}>
+                <button
+                  onClick={() => { setTab('cities'); setShowBurger(false) }}
+                  style={{
+                    ...btnNav,
+                    display: 'block',
+                    width: 220,
+                    textAlign: 'left',
+                    marginBottom: 6,
+                    background: tab === 'cities' ? PALETTE.primary : PALETTE.hoverBg,
+                    color: tab === 'cities' ? '#ffffff' : PALETTE.textPrimary,
+                    border: tab === 'cities' ? 'none' : `1px solid ${PALETTE.border}`,
+                    fontWeight: tab === 'cities' ? 700 : 400,
+                  }}
+                >🏙️ Cidades</button>
+
+                <button
+                  onClick={() => { setTab('vehicles'); setShowBurger(false) }}
+                  style={{
+                    ...btnNav,
+                    display: 'block',
+                    width: 220,
+                    textAlign: 'left',
+                    marginBottom: 6,
+                    background: tab === 'vehicles' ? PALETTE.primary : PALETTE.hoverBg,
+                    color: tab === 'vehicles' ? '#ffffff' : PALETTE.textPrimary,
+                    border: tab === 'vehicles' ? 'none' : `1px solid ${PALETTE.border}`,
+                    fontWeight: tab === 'vehicles' ? 700 : 400,
+                  }}
+                >🚗 Veículos</button>
+
+                <button
+                  onClick={() => { setTab('serviceTypes'); setShowBurger(false) }}
+                  style={{
+                    ...btnNav,
+                    display: 'block',
+                    width: 220,
+                    textAlign: 'left',
+                    background: tab === 'serviceTypes' ? PALETTE.primary : PALETTE.hoverBg,
+                    color: tab === 'serviceTypes' ? '#ffffff' : PALETTE.textPrimary,
+                    border: tab === 'serviceTypes' ? 'none' : `1px solid ${PALETTE.border}`,
+                    fontWeight: tab === 'serviceTypes' ? 700 : 400,
+                  }}
+                >🛠️ Tipos</button>
+
+                {canEdit && (
+                  <div style={{ marginTop: 8 }}>
+                    <button
+                      onClick={() => { setShowSettingsModal(true); setShowBurger(false) }}
+                      style={{
+                        ...btnNav,
+                        display: 'block',
+                        width: 220,
+                        textAlign: 'left',
+                        background: showSettingsModal ? PALETTE.primary : PALETTE.hoverBg,
+                        color: showSettingsModal ? '#ffffff' : PALETTE.textPrimary,
+                        border: showSettingsModal ? 'none' : `1px solid ${PALETTE.border}`,
+                        fontWeight: showSettingsModal ? 700 : 400,
+                      }}
+                    >⚙️ Padrões</button>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
 
         {tripsView !== 'calendar' && (
@@ -1133,14 +1276,19 @@ export default function Trips() {
                     {calendarDays.map((d, i) => {
                       const tlist = tripsForDate(d.date)
                       const isToday = isoDate(d.date) === isoDate(new Date())
-                      const baseBg = !d.current ? PALETTE.notCurrentBg : isToday ? PALETTE.todayBg : PALETTE.cardBg
+                      const hols = holidays.filter(h => isoDate(parseLocalDate(h.date.slice(0, 10))) === isoDate(d.date))
+                      const isHoliday = hols.length > 0
+                      const baseBg = isHoliday
+                        ? 'linear-gradient(135deg, #b8860b22 0%, #daa52044 50%, #b8860b22 100%)'
+                        : (!d.current ? PALETTE.notCurrentBg : isToday ? PALETTE.todayBg : PALETTE.cardBg)
                       return (
                         <div
                           key={i}
                           style={{
                             ...cellStyle,
                             background: baseBg,
-                            border: isToday ? `2px solid ${PALETTE.primary}` : `1px solid ${PALETTE.border}`,
+                            border: isToday ? `2px solid ${PALETTE.primary}` : isHoliday ? '1px solid #daa520' : `1px solid ${PALETTE.border}`,
+                            boxShadow: isHoliday ? '0 0 8px #daa52033, inset 0 0 12px #daa52011' : undefined,
                             opacity: d.current ? 1 : 0.4,
                             cursor: 'pointer',
                             transition: 'transform 200ms ease, box-shadow 200ms ease',
@@ -1149,9 +1297,34 @@ export default function Trips() {
                           onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform = ''; (e.currentTarget as HTMLElement).style.boxShadow = ''; }}
                           onClick={() => { setSelectedDay(d.date) }}
                         >
+                          {isHoliday && (
+                            <span
+                              onClick={(e) => { e.stopPropagation(); setHolidayModalData(hols) }}
+                              title={hols.map(h => h.name).join(', ')}
+                              style={{
+                                position: 'absolute', right: 3, top: 2, zIndex: 2,
+                                fontSize: 17, cursor: 'pointer', lineHeight: 1,
+                                filter: 'drop-shadow(0 1px 3px rgba(218,165,32,0.6))',
+                                opacity: d.current ? 1 : 0.6,
+                                transition: 'transform 0.2s ease, filter 0.2s ease',
+                              }}
+                              onMouseEnter={e => { e.currentTarget.style.transform = 'scale(1.35) rotate(15deg)'; e.currentTarget.style.filter = 'drop-shadow(0 2px 6px rgba(218,165,32,0.9))' }}
+                              onMouseLeave={e => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.filter = 'drop-shadow(0 1px 3px rgba(218,165,32,0.6))' }}
+                            >⭐</span>
+                          )}
                           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '4px 6px 2px' }}>
-                            <span style={{ fontWeight: 600, fontSize: 20 }}>{d.date.getDate()}</span>
+                            <span style={{ fontWeight: 600, fontSize: 20, color: isHoliday ? '#daa520' : undefined }}>{d.date.getDate()}</span>
                           </div>
+                          {isHoliday && hols.map(h => (
+                            <div key={`h-${h.id}`} title={h.name} style={{
+                              fontSize: 11, fontWeight: 700, padding: '1px 4px', margin: '0 3px 2px',
+                              borderRadius: 3, textAlign: 'center',
+                              background: '#FF6A00', color: '#ffffff',
+                              whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                              letterSpacing: '0.03em', textTransform: 'uppercase',
+                              opacity: d.current ? 1 : 0.65,
+                            }}>{h.name}</div>
+                          ))}
                           <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 2, padding: '2px 4px 4px', marginTop: 'auto' }}>
                             {tlist.slice(0, 2).map((t, idx) => {
                               const displayed = Math.min(tlist.length, 2)
@@ -1305,7 +1478,7 @@ export default function Trips() {
                             type="button"
                             onClick={() => {
                               setEditingTrip(null)
-                              setForm({ ...EMPTY_FORM, date: selectedDay.toISOString().slice(0, 10), startTime: '', endDate: selectedDay.toISOString().slice(0, 10), mealExpense: defaultMealExpense != null ? String(defaultMealExpense) : '' })
+                              setForm({ ...EMPTY_FORM, date: selectedDay.toISOString().slice(0, 10), startTime: '', endDate: selectedDay.toISOString().slice(0, 10), mealExpense: defaultMealExpense != null ? formatTwo(defaultMealExpense) : '' })
                               setMealEdited(false)
                               
                               setSkipInitialCalc(true)
@@ -1491,7 +1664,7 @@ export default function Trips() {
                         <div style={{ display: 'flex', gap: 4 }}>
                           {canEdit ? (
                             <>
-                              <button onClick={() => { setEditingExpense(e); setExpenseForm({ date: toDateInput(e.date), categoryId: e.category ? String(e.category.id) : '', amount: e.amount ?? '', currency: e.currency ?? 'BRL', odometer: e.odometer ?? '', receiptUrl: e.receiptUrl ?? '', notes: e.notes ?? '', workerId: e.workerId ?? '' }); setShowExpenseModal(true) }} style={btnSmallBlue as any}>Editar</button>
+                              <button onClick={() => { setEditingExpense(e); setExpenseForm({ date: toDateInput(e.date), categoryId: e.category ? String(e.category.id) : '', amount: formatTwo(e.amount ?? ''), currency: e.currency ?? 'BRL', odometer: e.odometer ?? '', receiptUrl: e.receiptUrl ?? '', notes: e.notes ?? '', workerId: e.workerId ?? '' }); setShowExpenseModal(true) }} style={btnSmallBlue as any}>Editar</button>
                               <button onClick={() => handleDeleteExpense(e.id)} style={btnSmallRed as any}>Excluir</button>
                             </>
                           ) : null}
@@ -1637,7 +1810,50 @@ export default function Trips() {
                                 <div style={{ fontWeight: 600 }}>
                                   {cities.find((c: any) => String(c.id) === String(cityBlock.cityId))?.name || 'Cidade não selecionada'}
                                 </div>
-                                <div style={{ color: PALETTE.textSecondary, fontSize: 12 }}>{(cityBlock.clients || []).length} cliente(s)</div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                  <div style={{ color: PALETTE.textSecondary, fontSize: 12 }}>{(cityBlock.clients || []).length} cliente(s)</div>
+                                  {((form as any).cities || []).length > 1 ? (
+                                    <div style={{ display: 'flex', gap: 6 }}>
+                                      <button
+                                        type="button"
+                                        onClick={() => setForm(f => {
+                                          const cities = Array.isArray((f as any).cities) ? [...(f as any).cities] : []
+                                          if (ci <= 0) return f
+                                          const tmp = cities[ci - 1]
+                                          cities[ci - 1] = cities[ci]
+                                          cities[ci] = tmp
+                                          return { ...f, cities }
+                                        })}
+                                        style={{ ...(btnSmallBlue as any), padding: '6px 8px' }}
+                                        title="Mover para cima"
+                                      >▲</button>
+
+                                      <button
+                                        type="button"
+                                        onClick={() => setForm(f => {
+                                          const cities = Array.isArray((f as any).cities) ? [...(f as any).cities] : []
+                                          if (ci >= cities.length - 1) return f
+                                          const tmp = cities[ci + 1]
+                                          cities[ci + 1] = cities[ci]
+                                          cities[ci] = tmp
+                                          return { ...f, cities }
+                                        })}
+                                        style={{ ...(btnSmallBlue as any), padding: '6px 8px' }}
+                                        title="Mover para baixo"
+                                      >▼</button>
+
+                                      <button
+                                        type="button"
+                                        onClick={() => setForm(f => {
+                                          const cities = Array.isArray((f as any).cities) ? [...(f as any).cities] : []
+                                          cities.splice(ci, 1)
+                                          return { ...f, cities }
+                                        })}
+                                        style={{ ...(btnSmallRed as any), padding: '6px 8px' }}
+                                      >Remover</button>
+                                    </div>
+                                  ) : null}
+                                </div>
                               </div>
                             </div>
                           ))
@@ -1678,6 +1894,20 @@ export default function Trips() {
                       {form.travelerIds.length === 0 && <div style={{ color: PALETTE.textSecondary }}>Selecione passageiros primeiro.</div>}
                     </div>
                   </div>
+
+                  {!editingTrip?.completed && (
+                    <div style={{ marginTop: 12 }}>
+                      <label style={{ ...labelStyle, marginBottom: 8 }}>Alimentação (R$)</label>
+                      <div style={moneyWrapper}>
+                        <CurrencyInput
+                          value={form.mealExpense}
+                          onChange={v => setForm({ ...form, mealExpense: v })}
+                          inputStyle={inputStyle}
+                          onRawChange={() => setMealEdited(true)}
+                        />
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -1693,46 +1923,74 @@ export default function Trips() {
                           <div>
                             <label style={{ ...labelStyle, fontSize: 11 }}>Alimentação (R$)</label>
                             <div style={moneyWrapper}>
-                              <input type="number" step="0.01" value={form.mealExpense} onChange={e => { setForm({ ...form, mealExpense: e.target.value }); setMealEdited(true); }} style={inputStyle} />
+                              <CurrencyInput
+                                value={form.mealExpense}
+                                onChange={v => setForm({ ...form, mealExpense: v })}
+                                inputStyle={inputStyle}
+                                onRawChange={() => setMealEdited(true)}
+                              />
                             </div>
                           </div>
                           <div>
                             <label style={{ ...labelStyle, fontSize: 11 }}>Combustível (R$)</label>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                              <div style={{ flex: 1, position: 'relative' }}>
-                                <input type="number" step="0.01" value={form.fuelExpense} onChange={e => setForm({ ...form, fuelExpense: e.target.value })} style={inputStyle} />
+                              <div style={{ flex: 1 }}>
+                                <CurrencyInput
+                                  value={form.fuelExpense}
+                                  onChange={v => setForm({ ...form, fuelExpense: v })}
+                                  inputStyle={inputStyle}
+                                  rightButton={num(form.fuelExpense) > 0 ? (
+                                    <button type="button" onClick={(e) => { e.stopPropagation(); setShowFuelNoteModal(true) }} style={{ ...(btnSmallBlue as any), padding: '6px 8px', fontSize: 12 }}>📝</button>
+                                  ) : undefined}
+                                />
                               </div>
-                              {Number(form.fuelExpense) > 0 && (
-                                <button type="button" onClick={(e) => { e.stopPropagation(); setShowFuelNoteModal(true) }} style={{ ...(btnSmallBlue as any), padding: '6px 8px', fontSize: 12 }}>📝</button>
-                              )}
                             </div>
                           </div>
                           <div>
                             <label style={{ ...labelStyle, fontSize: 11 }}>Extra (R$)</label>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                              <div style={{ flex: 1, position: 'relative' }}>
-                                <input type="number" step="0.01" value={form.extraExpense} onChange={e => setForm({ ...form, extraExpense: e.target.value })} style={inputStyle} />
+                              <div style={{ flex: 1 }}>
+                                <CurrencyInput
+                                  value={form.extraExpense}
+                                  onChange={v => setForm({ ...form, extraExpense: v })}
+                                  inputStyle={inputStyle}
+                                  rightButton={num(form.extraExpense) > 0 ? (
+                                    <button type="button" onClick={(e) => { e.stopPropagation(); setShowExtraNoteModal(true) }} style={{ ...(btnSmallBlue as any), padding: '6px 8px', fontSize: 12 }}>📝</button>
+                                  ) : undefined}
+                                />
                               </div>
-                              {Number(form.extraExpense) > 0 && (
-                                <button type="button" onClick={(e) => { e.stopPropagation(); setShowExtraNoteModal(true) }} style={{ ...(btnSmallBlue as any), padding: '6px 8px', fontSize: 12 }}>📝</button>
-                              )}
                             </div>
                           </div>
                           <div>
                             <label style={{ ...labelStyle, fontSize: 11 }}>Km Rodados</label>
-                            <input type="number" step="0.01" value={form.kmDriven} onChange={e => setForm({ ...form, kmDriven: e.target.value })} style={inputStyle} />
+                            <CurrencyInput
+                              value={form.kmDriven}
+                              onChange={v => setForm({ ...form, kmDriven: v })}
+                              inputStyle={inputStyle}
+                              showPrefix={false}
+                            />
                           </div>
                         </div>
 
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
                           <div>
                             <label style={{ ...labelStyle, fontSize: 11 }}>Consumo Médio (km/l)</label>
-                            <input type="number" step="0.01" value={form.avgConsumption} onChange={e => setForm({ ...form, avgConsumption: e.target.value })} style={inputStyle} />
+                            <CurrencyInput
+                              value={form.avgConsumption}
+                              onChange={v => setForm({ ...form, avgConsumption: v })}
+                              inputStyle={inputStyle}
+                              showPrefix={false}
+                            />
                           </div>
                           <div>
                             <label style={{ ...labelStyle, fontSize: 11 }}>Autonomia Restante (Km)</label>
                             <div style={moneyWrapper}>
-                              <input type="number" step="0.01" value={form.remainingAutonomy} onChange={e => setForm({ ...form, remainingAutonomy: e.target.value })} style={inputStyle} />
+                              <CurrencyInput
+                                value={form.remainingAutonomy}
+                                onChange={v => setForm({ ...form, remainingAutonomy: v })}
+                                inputStyle={inputStyle}
+                                showPrefix={false}
+                              />
                             </div>
                           </div>
                         </div>
@@ -1749,22 +2007,34 @@ export default function Trips() {
                   </div>
 
                   <div style={{ marginTop: 8, display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
-                      <div>
+                    <div>
                       <label style={{ ...labelStyle, fontSize: 11 }}>Custo/km (R$)</label>
                         <div style={moneyWrapper}>
-                        <input type="number" step="0.01" value={form.costPerKm} onChange={e => setForm({ ...form, costPerKm: e.target.value })} style={inputStyle} />
+                        <CurrencyInput
+                          value={form.costPerKm}
+                          onChange={v => setForm({ ...form, costPerKm: v })}
+                          inputStyle={inputStyle}
+                        />
                       </div>
                     </div>
                     <div>
                       <label style={{ ...labelStyle, fontSize: 11 }}>Lucro/km (R$)</label>
                       <div style={moneyWrapper}>
-                        <input type="number" step="0.01" value={form.profitPerKm} onChange={e => setForm({ ...form, profitPerKm: e.target.value })} style={inputStyle} />
+                        <CurrencyInput
+                          value={form.profitPerKm}
+                          onChange={v => setForm({ ...form, profitPerKm: v })}
+                          inputStyle={inputStyle}
+                        />
                       </div>
                     </div>
                     <div>
                       <label style={{ ...labelStyle, fontSize: 11 }}>Total (R$)</label>
                       <div style={moneyWrapper}>
-                        <input type="number" step="0.01" value={form.total} onChange={e => setForm({ ...form, total: e.target.value })} style={inputStyle} />
+                        <CurrencyInput
+                          value={form.total}
+                          onChange={v => setForm({ ...form, total: v })}
+                          inputStyle={inputStyle}
+                        />
                       </div>
                     </div>
                   </div>
@@ -1773,7 +2043,7 @@ export default function Trips() {
 
               <div style={{ marginTop: 12 }}>
                 <label style={labelStyle}>Observações</label>
-                <textarea value={form.note} onChange={e => setForm({ ...form, note: e.target.value })} rows={1} style={{ ...inputStyle, resize: 'vertical', minHeight: 40 }} />
+                <textarea value={form.note} onChange={e => setForm({ ...form, note: e.target.value })} rows={1} style={{ ...inputStyle, resize: 'vertical', minHeight: 100 }} />
               </div>
 
               {editingTrip && (
@@ -1823,6 +2093,65 @@ export default function Trips() {
         </div>
       )}
 
+      {pendingHolidayConfirm && (
+        <div style={overlay} onClick={() => { setPendingHolidayConfirm(null); pendingPayloadRef.current = null; pendingEditingRef.current = null }}>
+          <div style={modal} onClick={e => e.stopPropagation()}>
+            <h2 style={{ margin: 0, marginBottom: 8 }}>Confirmar feriado</h2>
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ fontSize: 15, marginBottom: 6 }}>A data <strong>{pendingHolidayConfirm.date}</strong> é feriado{pendingHolidayConfirm.name ? ` — ${pendingHolidayConfirm.name}` : ''}.</div>
+              <div style={{ color: '#666' }}>Deseja mesmo agendar a viagem nessa data?</div>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+              <button onClick={() => { setPendingHolidayConfirm(null); pendingPayloadRef.current = null; pendingEditingRef.current = null }} style={btnCancel as any}>Cancelar</button>
+              <button onClick={async () => { const p = pendingPayloadRef.current; const ed = pendingEditingRef.current; if (p) await performSave(p, ed); }} style={btnPrimary as any}>Confirmar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showClientInfoModal && clientInfoContent && (
+        <div style={overlay} onClick={() => setShowClientInfoModal(false)}>
+          <div style={smallModal} onClick={e => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h3 style={{ margin: 0 }}>{clientInfoContent.title ?? 'Informação'}</h3>
+              <button type="button" onClick={() => setShowClientInfoModal(false)} style={btnCancel as any}>Fechar</button>
+            </div>
+            <div style={{ marginTop: 12, whiteSpace: 'pre-wrap', color: PALETTE.textSecondary }}>{clientInfoContent.text}</div>
+          </div>
+        </div>
+      )}
+
+      {infoModal && infoModal.open && (
+        <div style={{ ...overlay, zIndex: 99999 }} onClick={() => setInfoModal(null)}>
+          <div style={smallModal} onClick={e => e.stopPropagation()}>
+            <h3 style={{ marginTop: 0 }}>Info do Cliente</h3>
+            <form onSubmit={(e) => {
+              e.preventDefault()
+              const im = infoModal
+              if (!im) return
+              const { ci, idx, value } = im
+              setForm((f: any) => {
+                const cities = Array.isArray((f as any).cities) ? [...(f as any).cities] : []
+                const block = cities[ci] || { clients: [] }
+                const clients = Array.isArray(block.clients) ? [...block.clients] : []
+                clients[idx] = { ...(clients[idx] || {}), info: value }
+                cities[ci] = { ...(cities[ci] || {}), clients }
+                return { ...f, cities }
+              })
+              setInfoModal(null)
+            }}>
+              <div>
+                <textarea value={infoModal.value} onChange={e => setInfoModal(im => im ? { ...im, value: e.target.value } : im)} rows={4} style={{ ...inputStyle, minHeight: 100, resize: 'vertical' }} />
+              </div>
+              <div style={{ marginTop: 12, display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                <button type="button" onClick={() => setInfoModal(null)} style={btnCancel as any}>Cancelar</button>
+                <button type="submit" style={btnPrimary as any}>Salvar</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {showCitiesClientsModal && (
         <div style={overlay} onClick={() => setShowCitiesClientsModal(false)}>
           <div style={modal} onClick={e => e.stopPropagation()}>
@@ -1863,11 +2192,41 @@ export default function Trips() {
                       {cities.map(c => <option key={c.id} value={c.id}>{c.name}{c.state ? ` - ${c.state}` : ''}</option>)}
                     </select>
                     {((form as any).cities || []).length > 1 ? (
-                      <button type="button" onClick={() => setForm(f => {
-                        const cities = Array.isArray((f as any).cities) ? [...(f as any).cities] : []
-                        cities.splice(ci, 1)
-                        return { ...f, cities }
-                      })} style={{ ...(btnSmallRed as any), padding: '6px 8px' }}>Remover cidade</button>
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        <button
+                          type="button"
+                          onClick={() => setForm(f => {
+                            const cities = Array.isArray((f as any).cities) ? [...(f as any).cities] : []
+                            if (ci <= 0) return f
+                            const tmp = cities[ci - 1]
+                            cities[ci - 1] = cities[ci]
+                            cities[ci] = tmp
+                            return { ...f, cities }
+                          })}
+                          style={{ ...(btnSmallBlue as any), padding: '6px 8px' }}
+                          title="Mover para cima"
+                        >▲</button>
+
+                        <button
+                          type="button"
+                          onClick={() => setForm(f => {
+                            const cities = Array.isArray((f as any).cities) ? [...(f as any).cities] : []
+                            if (ci >= cities.length - 1) return f
+                            const tmp = cities[ci + 1]
+                            cities[ci + 1] = cities[ci]
+                            cities[ci] = tmp
+                            return { ...f, cities }
+                          })}
+                          style={{ ...(btnSmallBlue as any), padding: '6px 8px' }}
+                          title="Mover para baixo"
+                        >▼</button>
+
+                        <button type="button" onClick={() => setForm(f => {
+                          const cities = Array.isArray((f as any).cities) ? [...(f as any).cities] : []
+                          cities.splice(ci, 1)
+                          return { ...f, cities }
+                        })} style={{ ...(btnSmallRed as any), padding: '6px 8px' }}>Remover</button>
+                      </div>
                     ) : <div style={{ width: 120 }} />}
                   </div>
 
@@ -1902,21 +2261,27 @@ export default function Trips() {
                           return { ...f, cities }
                         })} style={inputStyle} />
                         <div style={{ position: 'relative' }}>
-                          <input type="number" step="0.01" value={c.price} onChange={e => setForm(f => {
-                            const cities = Array.isArray((f as any).cities) ? [...(f as any).cities] : []
-                            const clients = Array.isArray(cities[ci].clients) ? [...cities[ci].clients] : []
-                            clients[idx] = { ...clients[idx], price: e.target.value }
-                            cities[ci] = { ...cities[ci], clients }
-                            return { ...f, cities }
-                          })} style={inputStyle} />
+                          <CurrencyInput
+                            value={c.price}
+                            onChange={v => setForm(f => {
+                              const cities = Array.isArray((f as any).cities) ? [...(f as any).cities] : []
+                              const clients = Array.isArray(cities[ci].clients) ? [...cities[ci].clients] : []
+                              clients[idx] = { ...clients[idx], price: v }
+                              cities[ci] = { ...cities[ci], clients }
+                              return { ...f, cities }
+                            })}
+                            inputStyle={inputStyle}
+                          />
                         </div>
-                        <input type="text" placeholder="Informação" value={c.info} onChange={e => setForm(f => {
-                          const cities = Array.isArray((f as any).cities) ? [...(f as any).cities] : []
-                          const clients = Array.isArray(cities[ci].clients) ? [...cities[ci].clients] : []
-                          clients[idx] = { ...clients[idx], info: e.target.value }
-                          cities[ci] = { ...cities[ci], clients }
-                          return { ...f, cities }
-                        })} style={inputStyle} />
+                        <div>
+                          <button
+                            type="button"
+                            onClick={() => setInfoModal({ open: true, ci, idx, value: c.info || '' })}
+                            style={{ ...(c.info ? (btnSmallBlue as any) : (btnSmall as any)), padding: '6px 8px', textAlign: 'left', width: '100%' }}
+                          >
+                            {c.info ? 'Editar info' : 'Adicionar info'}
+                          </button>
+                        </div>
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                           {idx === 0 ? (
                             <div style={{ width: 32 }} />
@@ -1941,6 +2306,42 @@ export default function Trips() {
             <div style={{ marginTop: 12, display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
               <button type="button" onClick={() => setShowCitiesClientsModal(false)} style={btnCancel as any}>Fechar</button>
               <button type="button" onClick={() => setShowCitiesClientsModal(false)} style={btnPrimary as any}>Salvar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {holidayModalData && (
+        <div style={{ position: 'fixed', inset: 0, background: '#000000aa', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}
+          onClick={e => { if (e.target === e.currentTarget) setHolidayModalData(null) }}>
+          <div style={{
+            width: 380, maxWidth: '90%', background: PALETTE.cardBg, borderRadius: 12, padding: 0,
+            boxShadow: '0 12px 48px rgba(0,0,0,0.5)', overflow: 'hidden',
+            border: '1px solid #daa52066',
+          }}>
+            <div style={{
+              background: 'linear-gradient(135deg, #b8860b 0%, #daa520 50%, #b8860b 100%)',
+              padding: '16px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 22 }}>⭐</span>
+                <h2 style={{ margin: 0, fontSize: 17, color: '#fff', fontWeight: 700 }}>Feriado</h2>
+              </div>
+              <button onClick={() => setHolidayModalData(null)} style={{
+                background: 'rgba(255,255,255,0.2)', border: 'none', borderRadius: 6,
+                color: '#fff', cursor: 'pointer', padding: '4px 10px', fontSize: 13, fontWeight: 600,
+              }}>✕</button>
+            </div>
+            <div style={{ padding: '16px 20px' }}>
+              {holidayModalData.map(h => (
+                <div key={h.id} style={{
+                  padding: '14px 16px', background: '#FF6A00',
+                  border: '1px solid #ff8c0333', borderRadius: 8, marginBottom: 8,
+                }}>
+                  <div style={{ fontSize: 18, fontWeight: 700, color: '#ffffff' }}>{h.name}</div>
+                  <div style={{ fontSize: 15, color: '#ffffff', marginTop: 6 }}>📅 {new Date(h.date).toLocaleDateString('pt-BR')}</div>
+                </div>
+              ))}
             </div>
           </div>
         </div>
@@ -2025,7 +2426,11 @@ export default function Trips() {
                       <div>
                         <label style={labelStyle}>Valor (R$)</label>
                         <div style={moneyWrapper}>
-                          <input type="number" step="0.01" value={expenseForm.amount} onChange={e => setExpenseForm({ ...expenseForm, amount: e.target.value })} style={inputStyle} />
+                          <CurrencyInput
+                            value={expenseForm.amount}
+                            onChange={v => setExpenseForm({ ...expenseForm, amount: v })}
+                            inputStyle={inputStyle}
+                          />
                         </div>
                       </div>
                       {/* Fornecedor removed */}

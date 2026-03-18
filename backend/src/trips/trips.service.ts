@@ -153,6 +153,10 @@ export class TripsService {
   }
 
   async remove(id: number) {
-    return this.prisma.trip.delete({ where: { id } })
+    // delete related trip cities first to avoid FK RESTRICT errors
+    return this.prisma.$transaction(async prisma => {
+      await prisma.tripCity.deleteMany({ where: { tripId: id } })
+      return prisma.trip.delete({ where: { id } })
+    })
   }
 }

@@ -5,6 +5,8 @@ export const PALETTE = {
   backgroundSecondary: '#20242A',
   cardBg: '#2A2F36',
   hoverBg: '#323844',
+  rowHover: '#3B4756',
+  rowOpen: '#334055',
   border: '#3A4250',
 
   // texto
