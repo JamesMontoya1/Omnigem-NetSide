@@ -95,8 +95,14 @@ export class TripsService {
       const created = await this.prisma.trip.create({ data: tripCreateData, include: { tripCities: { include: { city: true } }, vehicle: true, travelers: true, drivers: true, serviceType: true } } as any)
       if (created.vehicleId && Object.keys(vehiclePayload).length) {
         try {
-          await this.prisma.vehicle.update({ where: { id: created.vehicleId }, data: vehiclePayload })
-          return await this.prisma.trip.findUnique({ where: { id: created.id }, include: { tripCities: { include: { city: true } }, vehicle: true, travelers: true, drivers: true, serviceType: true } } as any)
+          if (created.completed) {
+            const latestCompleted = await this.prisma.trip.findFirst({ where: { vehicleId: created.vehicleId, completed: true }, orderBy: { endDate: 'desc' } })
+            if (latestCompleted && latestCompleted.id === created.id) {
+              await this.prisma.vehicle.update({ where: { id: created.vehicleId }, data: vehiclePayload })
+              return await this.prisma.trip.findUnique({ where: { id: created.id }, include: { tripCities: { include: { city: true } }, vehicle: true, travelers: true, drivers: true, serviceType: true } } as any)
+            }
+          }
+          return created
         } catch (err: any) {
           throw new Error(`Trip created but failed updating vehicle: ${err?.message || String(err)}`)
         }
@@ -169,8 +175,17 @@ export class TripsService {
     const vehicleIdToUpdate = payload.vehicleId ?? updated.vehicleId
     if (vehicleIdToUpdate && Object.keys(vehiclePayload).length) {
       try {
-        await this.prisma.vehicle.update({ where: { id: Number(vehicleIdToUpdate) }, data: vehiclePayload })
-        return await this.prisma.trip.findUnique({ where: { id: updated.id }, include: { tripCities: { include: { city: true } }, vehicle: true, travelers: true, drivers: true, serviceType: true } } as any)
+        // Only update vehicle master fields when the trip is completed and
+        // this trip is the most recent completed trip for that vehicle.
+        if (updated.completed) {
+          const latestCompleted = await this.prisma.trip.findFirst({ where: { vehicleId: Number(vehicleIdToUpdate), completed: true }, orderBy: { endDate: 'desc' } })
+          if (latestCompleted && latestCompleted.id === updated.id) {
+            await this.prisma.vehicle.update({ where: { id: Number(vehicleIdToUpdate) }, data: vehiclePayload })
+            return await this.prisma.trip.findUnique({ where: { id: updated.id }, include: { tripCities: { include: { city: true } }, vehicle: true, travelers: true, drivers: true, serviceType: true } } as any)
+          }
+        }
+        // If not allowed to update master vehicle, just return updated trip
+        return updated
       } catch (err: any) {
         throw new Error(`Trip updated but failed updating vehicle: ${err?.message || String(err)}`)
       }

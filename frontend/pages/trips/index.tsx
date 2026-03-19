@@ -779,12 +779,35 @@ export default function Trips() {
   async function handleSaveVehicle(e: React.FormEvent) {
     e.preventDefault()
     try {
+      let shouldUpdateMaster = true
+      if (vehicleModalFromTrip && editingTrip) {
+        const vehicleIdCandidate = editingVehicle ? editingVehicle.id : ((editingTrip as any).vehicleId ?? null)
+        if (vehicleIdCandidate != null) {
+          if (editingTrip.completed) {
+            const vehicleTrips = trips.filter(t => (t as any).vehicleId === vehicleIdCandidate)
+            if (vehicleTrips.length > 0) {
+              const ts = (t: any) => t.completed && t.endDate ? new Date(t.endDate).getTime() : new Date(t.date).getTime()
+              const latest = vehicleTrips.reduce((a, b) => ts(a) >= ts(b) ? a : b)
+              shouldUpdateMaster = latest.id === editingTrip.id
+            } else {
+              shouldUpdateMaster = true
+            }
+          } else {
+            shouldUpdateMaster = false
+          }
+        } else {
+          shouldUpdateMaster = true
+        }
+      }
+
       const payload: any = { plate: vehicleForm.plate || null, model: vehicleForm.model || null, notes: vehicleForm.notes || null }
-      if (vehicleForm.odometer !== '') payload.odometer = Number(String(vehicleForm.odometer).replace(',', '.'))
-      if (vehicleForm.nextOilChange) payload.nextOilChange = new Date(vehicleForm.nextOilChange).toISOString()
-      if (vehicleForm.odometerAtLastAlignment !== '') payload.odometerAtLastAlignment = Number(String(vehicleForm.odometerAtLastAlignment).replace(',', '.'))
-      if (vehicleForm.lastAlignment) payload.lastAlignment = new Date(vehicleForm.lastAlignment).toISOString()
-      if (vehicleForm.lastMaintenance) payload.lastMaintenance = new Date(vehicleForm.lastMaintenance).toISOString()
+      if (shouldUpdateMaster) {
+        if (vehicleForm.odometer !== '') payload.odometer = Number(String(vehicleForm.odometer).replace(',', '.'))
+        if (vehicleForm.nextOilChange) payload.nextOilChange = new Date(vehicleForm.nextOilChange).toISOString()
+        if (vehicleForm.odometerAtLastAlignment !== '') payload.odometerAtLastAlignment = Number(String(vehicleForm.odometerAtLastAlignment).replace(',', '.'))
+        if (vehicleForm.lastAlignment) payload.lastAlignment = new Date(vehicleForm.lastAlignment).toISOString()
+        if (vehicleForm.lastMaintenance) payload.lastMaintenance = new Date(vehicleForm.lastMaintenance).toISOString()
+      }
 
       const url = editingVehicle ? `${API_BASE}/vehicles/${editingVehicle.id}` : `${API_BASE}/vehicles`
       const method = editingVehicle ? 'PUT' : 'POST'
@@ -812,6 +835,7 @@ export default function Trips() {
           addToast('Veículo salvo, mas falha ao atualizar viagem', 'error')
         }
       }
+
       setVehicleModalFromTrip(false)
       setShowVehicleModal(false); await fetchVehicles()
     } catch { addToast('Erro ao salvar veículo', 'error') }
