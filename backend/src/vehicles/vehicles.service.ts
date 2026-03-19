@@ -13,11 +13,11 @@ export class VehiclesService {
     return this.prisma.vehicle.findUnique({ where: { id } })
   }
 
-  create(data: { plate?: string; model?: string; notes?: string }) {
+  create(data: any) {
     return this.prisma.vehicle.create({ data })
   }
 
-  update(id: number, data: { plate?: string; model?: string; notes?: string }) {
+  update(id: number, data: any) {
     return this.prisma.vehicle.update({ where: { id }, data })
   }
 
