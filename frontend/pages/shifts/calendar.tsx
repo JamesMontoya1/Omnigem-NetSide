@@ -254,7 +254,13 @@ export default function CalendarPage() {
     <div style={{ fontFamily: 'system-ui, sans-serif', backgroundColor: PALETTE.background, color: PALETTE.textPrimary, height: '100vh', overflow: 'hidden', display: 'flex', flexDirection: 'column', boxSizing: 'border-box' }}>
       <div style={{ padding: '12px 24px', display: 'flex', alignItems: 'center', gap: 12, borderBottom: `1px solid ${PALETTE.border}`, flexShrink: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <button onClick={() => router.push('/selection')} style={btnNav}>← Voltar</button>
+          <button onClick={() => router.push('/selection')} style={{
+            ...btnNav,
+            background: 'transparent',
+            color: '#FF3B30',
+            border: '2px solid #FF3B30',
+            fontWeight: 700,
+          }}>← Voltar</button>     
           <h1 style={{ margin: 0, fontSize: 22, marginLeft: 8 }}>Plantões</h1>
           {isAdmin && <button onClick={() => setShowWorkersModal(true)} style={btnNav}>👷 Trabalhadores</button>}
           {isAdmin && <button onClick={() => setShowHolidaysModal(true)} style={btnNav}>🎉 Feriados</button>}
