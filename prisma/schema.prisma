@@ -238,7 +238,6 @@ model Trip {
   costPerKm            Decimal? @default(0)
   profitPerKm          Decimal? @default(0)
   avgConsumption       Decimal?
-
   remainingAutonomy    Decimal?
 
   travelers            Worker[]  @relation("TravelerTrip")

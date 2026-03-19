@@ -196,6 +196,10 @@ export default function Trips() {
   const [defaultMealExpense, setDefaultMealExpense] = useState<number | null>(null)
   const [showSettingsModal, setShowSettingsModal] = useState(false)
   const [settingsMealValue, setSettingsMealValue] = useState('')
+  const [defaultMaintenanceInterval, setDefaultMaintenanceInterval] = useState<number | null>(null)
+  const [defaultAlignmentInterval, setDefaultAlignmentInterval] = useState<number | null>(null)
+  const [settingsMaintenanceValue, setSettingsMaintenanceValue] = useState('')
+  const [settingsAlignmentValue, setSettingsAlignmentValue] = useState('')
 
   const [tab, setTab] = useState<'trips' | 'cities' | 'vehicles' | 'serviceTypes'>('trips')
   const [showFilters, setShowFilters] = useState(false)
@@ -387,6 +391,23 @@ export default function Trips() {
       const j = await r.json()
       setDefaultMealExpense(j.value)
       setSettingsMealValue(String(j.value ?? ''))
+    } catch {
+    }
+    try {
+      const r3 = await fetch(`${API_BASE}/settings/maintenanceInterval`, { headers: authHeaders() })
+      if (r3.ok) {
+        const j3 = await r3.json()
+        setDefaultMaintenanceInterval(j3.value)
+        setSettingsMaintenanceValue(String(j3.value ?? ''))
+      }
+    } catch {}
+    try {
+      const r4 = await fetch(`${API_BASE}/settings/alignmentInterval`, { headers: authHeaders() })
+      if (r4.ok) {
+        const j4 = await r4.json()
+        setDefaultAlignmentInterval(j4.value)
+        setSettingsAlignmentValue(String(j4.value ?? ''))
+      }
     } catch {
     }
   }, [])
@@ -1211,7 +1232,7 @@ export default function Trips() {
               const iso = toDateInput(String(v.lastAlignment))
               const d0 = parseLocalDate(iso)
               const d = new Date(d0.getFullYear(), d0.getMonth(), d0.getDate())
-              d.setDate(d.getDate() + 60)
+              d.setDate(d.getDate() + (defaultAlignmentInterval ?? 60))
               const diff = Math.ceil((d.getTime() - today.getTime()) / msPerDay)
               return { v, d, diff }
             }).filter(x => x.diff >= 0 && x.diff <= 30)
@@ -1221,7 +1242,7 @@ export default function Trips() {
               const iso = toDateInput(String(v.lastMaintenance))
               const d0 = parseLocalDate(iso)
               const d = new Date(d0.getFullYear(), d0.getMonth(), d0.getDate())
-              d.setDate(d.getDate() + 60)
+              d.setDate(d.getDate() + (defaultMaintenanceInterval ?? 60))
               const diff = Math.ceil((d.getTime() - today.getTime()) / msPerDay)
               return { v, d, diff }
             }).filter(x => x.diff >= 0 && x.diff <= 30)
@@ -1232,12 +1253,41 @@ export default function Trips() {
             return (
               <>
                 {(() => {
-                  const overdueCount = (trips || []).filter(tr => {
+                  const tripOverdueCount = (trips || []).filter(tr => {
                     if (tr.completed) return false
                     const iso = toDateInput(tr.date)
                     const d = parseLocalDate(iso)
                     return d.getTime() < today.getTime()
                   }).length
+
+                  const msPerDay = 24 * 60 * 60 * 1000
+                  const veh = vehicles || []
+                  const oilOverdueCount = (veh || []).filter(v => v.nextOilChange).map(v => {
+                    const iso = toDateInput(String(v.nextOilChange))
+                    const d = parseLocalDate(iso)
+                    const diff = Math.ceil((d.getTime() - today.getTime()) / msPerDay)
+                    return diff
+                  }).filter(diff => diff < 0).length
+
+                  const maintOverdueCount = (veh || []).filter(v => v.lastMaintenance).map(v => {
+                    const iso = toDateInput(String(v.lastMaintenance))
+                    const d0 = parseLocalDate(iso)
+                    const d = new Date(d0.getFullYear(), d0.getMonth(), d0.getDate())
+                    d.setDate(d.getDate() + (defaultMaintenanceInterval ?? 60))
+                    const diff = Math.ceil((d.getTime() - today.getTime()) / msPerDay)
+                    return diff
+                  }).filter(diff => diff < 0).length
+
+                  const alignOverdueCount = (veh || []).filter(v => v.lastAlignment).map(v => {
+                    const iso = toDateInput(String(v.lastAlignment))
+                    const d0 = parseLocalDate(iso)
+                    const d = new Date(d0.getFullYear(), d0.getMonth(), d0.getDate())
+                    d.setDate(d.getDate() + (defaultAlignmentInterval ?? 60))
+                    const diff = Math.floor((d.getTime() - today.getTime()) / msPerDay)
+                    return diff
+                  }).filter(diff => diff < 0).length
+
+                  const overdueCount = tripOverdueCount + oilOverdueCount + maintOverdueCount + alignOverdueCount
                   if (!overdueCount) return null
                   return (
                     <button
@@ -1254,7 +1304,7 @@ export default function Trips() {
                         }
                         setShowOverdue(true)
                       }}
-                      title="Viagens atrasadas - acesse para ajustar"
+                      title="Atrasos"
                       style={{
                         ...btnNav,
                         marginRight: 8,
@@ -1274,6 +1324,7 @@ export default function Trips() {
                 type="button"
                 onClick={() => {
                   if (showNotifications) { setShowNotifications(false); return }
+                  setShowOverdue(false)
                   const rect = notifRef.current?.getBoundingClientRect()
                   const popWidth = 520
                   if (rect) {
@@ -1315,7 +1366,7 @@ export default function Trips() {
               aria-expanded={showBurger}
               style={{ ...btnNav, display: 'flex', alignItems: 'center', gap: 8 }}
             >
-              ☰ Menu
+              ☰ Cadastros adicionais
             </button>
             {showBurger && (
               <div style={{ position: 'absolute', right: 0, top: 'calc(100% + 8px)', background: PALETTE.cardBg, border: `1px solid ${PALETTE.border}`, boxShadow: '0 8px 20px rgba(0,0,0,0.08)', borderRadius: 8, padding: 8, zIndex: 2000 }}>
@@ -2364,8 +2415,8 @@ export default function Trips() {
                   <div style={{ display: 'grid', gap: 8 }}>
                     {items.map(t => {
                       const isTodayTrip = toDateInput(t.date) === todayIso
-                      const itemBg = isTodayTrip ? `${PALETTE.error}33` : PALETTE.cardBg
-                      const itemBorder = isTodayTrip ? `1px solid ${PALETTE.error}88` : `1px solid ${PALETTE.border}`
+                      const itemBg = isTodayTrip ? `${PALETTE.success}33` : PALETTE.cardBg
+                      const itemBorder = isTodayTrip ? `1px solid ${PALETTE.success}88` : `1px solid ${PALETTE.border}`
                       return (
                       <div
                         key={t.id}
@@ -2445,8 +2496,8 @@ export default function Trips() {
                         const rightInfo = v.model || v.notes || '—'
                         const daysText = diff === 0 ? 'Hoje' : diff === 1 ? '1 dia' : `${diff} dias`
                         const isDueToday = diff === 0
-                        const itemBg = isDueToday ? `${PALETTE.error}33` : PALETTE.cardBg
-                        const itemBorder = isDueToday ? `1px solid ${PALETTE.error}88` : `1px solid ${PALETTE.border}`
+                        const itemBg = isDueToday ? `${PALETTE.success}33` : PALETTE.cardBg
+                        const itemBorder = isDueToday ? `1px solid ${PALETTE.success}88` : `1px solid ${PALETTE.border}`
                         return (
                           <div
                             key={v.id}
@@ -2498,7 +2549,7 @@ export default function Trips() {
                     const iso = toDateInput(String(v.lastMaintenance))
                     const d0 = parseLocalDate(iso)
                     const d = new Date(d0.getFullYear(), d0.getMonth(), d0.getDate())
-                    d.setMonth(d.getMonth() + 2)
+                    d.setDate(d.getDate() + (defaultMaintenanceInterval ?? 60))
                     const diff = Math.ceil((d.getTime() - today.getTime()) / msPerDay)
                     return { v, d, diff }
                   }).filter(x => x.diff >= 0 && x.diff <= 30)
@@ -2511,8 +2562,8 @@ export default function Trips() {
                         const dow = ['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'][d.getDay()]
                         const daysText = diff === 0 ? 'Hoje' : diff === 1 ? '1 dia' : `${diff} dias`
                         const isDueToday = diff === 0
-                        const itemBg = isDueToday ? `${PALETTE.error}33` : PALETTE.cardBg
-                        const itemBorder = isDueToday ? `1px solid ${PALETTE.error}88` : `1px solid ${PALETTE.border}`
+                        const itemBg = isDueToday ? `${PALETTE.success}33` : PALETTE.cardBg
+                        const itemBorder = isDueToday ? `1px solid ${PALETTE.success}88` : `1px solid ${PALETTE.border}`
                         return (
                           <div
                             key={v.id}
@@ -2563,7 +2614,8 @@ export default function Trips() {
                   const alignItems = (vehicles || []).filter(v => v.lastAlignment).map(v => {
                     const iso = toDateInput(String(v.lastAlignment))
                     const d0 = parseLocalDate(iso)
-                    const d = new Date(d0.getFullYear(), d0.getMonth() + 2, d0.getDate())
+                    const d = new Date(d0.getFullYear(), d0.getMonth(), d0.getDate())
+                    d.setDate(d.getDate() + (defaultAlignmentInterval ?? 60))
                     const diff = Math.floor((d.getTime() - today.getTime()) / msPerDay)
                     return { v, d, diff }
                   }).filter(x => x.diff >= 0 && x.diff <= 30)
@@ -2576,8 +2628,8 @@ export default function Trips() {
                         const dow = ['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'][d.getDay()]
                         const daysText = diff === 0 ? 'Hoje' : diff === 1 ? '1 dia' : `${diff} dias`
                         const isDueToday = diff === 0
-                        const itemBg = isDueToday ? `${PALETTE.error}33` : PALETTE.cardBg
-                        const itemBorder = isDueToday ? `1px solid ${PALETTE.error}88` : `1px solid ${PALETTE.border}`
+                        const itemBg = isDueToday ? `${PALETTE.success}33` : PALETTE.cardBg
+                        const itemBorder = isDueToday ? `1px solid ${PALETTE.success}88` : `1px solid ${PALETTE.border}`
                         return (
                           <div
                             key={v.id}
@@ -2622,6 +2674,7 @@ export default function Trips() {
         </div>
       )}
 
+          {/* Popover de atrasos */}
           {showOverdue && overduePos && (
             <div id="overdue-popover" style={{ position: 'absolute', top: overduePos.top, left: overduePos.left, width: 520, zIndex: 2000 }}>
               <div style={{
@@ -2637,10 +2690,11 @@ export default function Trips() {
                   overflowY: 'auto'
                 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <h3 style={{ margin: 0, fontSize: 16 }}>Viagens atrasadas - acesse para ajustar</h3>
+                  <h3 style={{ margin: 0, fontSize: 16 }}>Atrasos</h3>
                   <button type="button" onClick={() => setShowOverdue(false)} style={btnCancel as any}>X</button>
                 </div>
 
+                <div style={{ color: PALETTE.textSecondary, marginBottom: 8 }}>Viagens em atraso</div>
                 <div style={{ marginTop: 8 }}>
                   {(() => {
                     const today = new Date()
@@ -2652,7 +2706,41 @@ export default function Trips() {
                       const d = parseLocalDate(iso)
                       return d.getTime() < today.getTime()
                     })
-                    if (items.length === 0) return <div style={{ color: PALETTE.textSecondary }}>Nenhuma viagem atrasada.</div>
+                    if (items.length === 0) {
+                      const today2 = new Date()
+                      today2.setHours(0, 0, 0, 0)
+                      const msPerDay2 = 24 * 60 * 60 * 1000
+                      const veh = vehicles || []
+                      const oilOverdue = (veh || []).filter(v => v.nextOilChange).map(v => {
+                        const iso = toDateInput(String(v.nextOilChange))
+                        const d = parseLocalDate(iso)
+                        const diff = Math.ceil((d.getTime() - today2.getTime()) / msPerDay2)
+                        return { v, d, diff }
+                      }).filter(x => x.diff < 0)
+
+                      const maintOverdue = (veh || []).filter(v => v.lastMaintenance).map(v => {
+                        const iso = toDateInput(String(v.lastMaintenance))
+                        const d0 = parseLocalDate(iso)
+                        const d = new Date(d0.getFullYear(), d0.getMonth(), d0.getDate())
+                        d.setDate(d.getDate() + (defaultMaintenanceInterval ?? 60))
+                        const diff = Math.ceil((d.getTime() - today2.getTime()) / msPerDay2)
+                        return { v, d, diff }
+                      }).filter(x => x.diff < 0)
+
+                      const alignOverdue = (veh || []).filter(v => v.lastAlignment).map(v => {
+                        const iso = toDateInput(String(v.lastAlignment))
+                        const d0 = parseLocalDate(iso)
+                        const d = new Date(d0.getFullYear(), d0.getMonth(), d0.getDate())
+                        d.setDate(d.getDate() + (defaultAlignmentInterval ?? 60))
+                        const diff = Math.floor((d.getTime() - today2.getTime()) / msPerDay2)
+                        return { v, d, diff }
+                      }).filter(x => x.diff < 0)
+
+                      if (oilOverdue.length === 0 && maintOverdue.length === 0 && alignOverdue.length === 0) {
+                        return <div style={{ color: PALETTE.textSecondary }}>Nenhuma viagem atrasada.</div>
+                      }
+                    }
+
                     return (
                       <div style={{ display: 'grid', gap: 8 }}>
                         {items.map(t => {
@@ -2703,6 +2791,157 @@ export default function Trips() {
                             </div>
                           )
                         })}
+
+                        {/* Vehicles overdue sections */}
+                        {(() => {
+                          const today = new Date()
+                          today.setHours(0, 0, 0, 0)
+                          const msPerDay = 24 * 60 * 60 * 1000
+                          const veh = vehicles || []
+
+                          const oilItems = (veh || []).filter(v => v.nextOilChange).map(v => {
+                            const iso = toDateInput(String(v.nextOilChange))
+                            const d = parseLocalDate(iso)
+                            const diff = Math.ceil((d.getTime() - today.getTime()) / msPerDay)
+                            return { v, d, diff }
+                          }).filter(x => x.diff < 0)
+
+                          const maintItems = (veh || []).filter(v => v.lastMaintenance).map(v => {
+                            const iso = toDateInput(String(v.lastMaintenance))
+                            const d0 = parseLocalDate(iso)
+                            const d = new Date(d0.getFullYear(), d0.getMonth(), d0.getDate())
+                            d.setDate(d.getDate() + (defaultMaintenanceInterval ?? 60))
+                            const diff = Math.ceil((d.getTime() - today.getTime()) / msPerDay)
+                            return { v, d, diff }
+                          }).filter(x => x.diff < 0)
+
+                          const alignItems = (veh || []).filter(v => v.lastAlignment).map(v => {
+                            const iso = toDateInput(String(v.lastAlignment))
+                            const d0 = parseLocalDate(iso)
+                            const d = new Date(d0.getFullYear(), d0.getMonth(), d0.getDate())
+                            d.setDate(d.getDate() + (defaultAlignmentInterval ?? 60))
+                            const diff = Math.floor((d.getTime() - today.getTime()) / msPerDay)
+                            return { v, d, diff }
+                          }).filter(x => x.diff < 0)
+
+                          return (
+                            <>
+                              {oilItems.length > 0 && (
+                                <div style={{ marginTop: 12 }}>
+                                  <div style={{ color: PALETTE.textSecondary, marginBottom: 8 }}>Trocas de óleo em atraso</div>
+                                  <div style={{ display: 'grid', gap: 8 }}>
+                                    {oilItems.map(({ v, d, diff }) => {
+                                      const dow = ['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'][d.getDay()]
+                                      const daysText = Math.abs(diff) === 0 ? 'Hoje' : Math.abs(diff) === 1 ? '1 dia atrasado' : `${Math.abs(diff)} dias atrasados`
+                                      return (
+                                        <div
+                                          key={`oil-${v.id}`}
+                                          onClick={() => { setShowOverdue(false); if (canEdit) openEditVehicle(v) }}
+                                          onMouseEnter={() => setHoveredNotif(`vehicle-oil-${v.id}`)}
+                                          onMouseLeave={() => setHoveredNotif(null)}
+                                          role="button"
+                                          tabIndex={0}
+                                          style={{
+                                            padding: 6,
+                                            borderRadius: 6,
+                                            background: `${PALETTE.error}33`,
+                                            border: `1px solid ${PALETTE.error}88`,
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: 8,
+                                            minHeight: 44,
+                                            cursor: 'pointer',
+                                          }}
+                                        >
+                                          <div style={{ flex: 1, minWidth: 0 }}>
+                                            <div style={{ fontWeight: 700, fontSize: 13, lineHeight: 1 }}>{(v.model || v.plate) ? `${v.model ?? '—'} - ${v.plate ?? '—'}` : 'Veículo'}</div>
+                                            <div style={{ fontSize: 12, color: PALETTE.textSecondary, lineHeight: 1 }}>{dow} {d.toLocaleDateString('pt-BR')} - Troca de óleo — {daysText}</div>
+                                          </div>
+                                        </div>
+                                      )
+                                    })}
+                                  </div>
+                                </div>
+                              )}
+
+                              {maintItems.length > 0 && (
+                                <div style={{ marginTop: 12 }}>
+                                  <div style={{ color: PALETTE.textSecondary, marginBottom: 8 }}>Manutenção em atraso</div>
+                                  <div style={{ display: 'grid', gap: 8 }}>
+                                    {maintItems.map(({ v, d, diff }) => {
+                                      const dow = ['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'][d.getDay()]
+                                      const daysText = Math.abs(diff) === 0 ? 'Hoje' : Math.abs(diff) === 1 ? '1 dia atrasado' : `${Math.abs(diff)} dias atrasados`
+                                      return (
+                                        <div
+                                          key={`maint-${v.id}`}
+                                          onClick={() => { setShowOverdue(false); if (canEdit) openEditVehicle(v) }}
+                                          onMouseEnter={() => setHoveredNotif(`vehicle-maint-${v.id}`)}
+                                          onMouseLeave={() => setHoveredNotif(null)}
+                                          role="button"
+                                          tabIndex={0}
+                                          style={{
+                                            padding: 6,
+                                            borderRadius: 6,
+                                            background: `${PALETTE.error}33`,
+                                            border: `1px solid ${PALETTE.error}88`,
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: 8,
+                                            minHeight: 44,
+                                            cursor: 'pointer',
+                                          }}
+                                        >
+                                          <div style={{ flex: 1, minWidth: 0 }}>
+                                            <div style={{ fontWeight: 700, fontSize: 13, lineHeight: 1 }}>{(v.model || v.plate) ? `${v.model ?? '—'} - ${v.plate ?? '—'}` : 'Veículo'}</div>
+                                            <div style={{ fontSize: 12, color: PALETTE.textSecondary, lineHeight: 1 }}>{dow} {d.toLocaleDateString('pt-BR')} - Manutenção — {daysText}</div>
+                                          </div>
+                                        </div>
+                                      )
+                                    })}
+                                  </div>
+                                </div>
+                              )}
+
+                              {alignItems.length > 0 && (
+                                <div style={{ marginTop: 12 }}>
+                                  <div style={{ color: PALETTE.textSecondary, marginBottom: 8 }}>Alinhamentos em atraso</div>
+                                  <div style={{ display: 'grid', gap: 8 }}>
+                                    {alignItems.map(({ v, d, diff }) => {
+                                      const dow = ['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'][d.getDay()]
+                                      const daysText = Math.abs(diff) === 0 ? 'Hoje' : Math.abs(diff) === 1 ? '1 dia atrasado' : `${Math.abs(diff)} dias atrasados`
+                                      return (
+                                        <div
+                                          key={`align-${v.id}`}
+                                          onClick={() => { setShowOverdue(false); if (canEdit) openEditVehicle(v) }}
+                                          onMouseEnter={() => setHoveredNotif(`vehicle-align-${v.id}`)}
+                                          onMouseLeave={() => setHoveredNotif(null)}
+                                          role="button"
+                                          tabIndex={0}
+                                          style={{
+                                            padding: 6,
+                                            borderRadius: 6,
+                                            background: `${PALETTE.error}33`,
+                                            border: `1px solid ${PALETTE.error}88`,
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: 8,
+                                            minHeight: 44,
+                                            cursor: 'pointer',
+                                          }}
+                                        >
+                                          <div style={{ flex: 1, minWidth: 0 }}>
+                                            <div style={{ fontWeight: 700, fontSize: 13, lineHeight: 1 }}>{(v.model || v.plate) ? `${v.model ?? '—'} - ${v.plate ?? '—'}` : 'Veículo'}</div>
+                                            <div style={{ fontSize: 12, color: PALETTE.textSecondary, lineHeight: 1 }}>{dow} {d.toLocaleDateString('pt-BR')} - Alinhamento — {daysText}</div>
+                                          </div>
+                                        </div>
+                                      )
+                                    })}
+                                  </div>
+                                </div>
+                              )}
+                            </>
+                          )
+                        })()}
                       </div>
                     )
                   })()}
@@ -3169,18 +3408,38 @@ export default function Trips() {
             <form onSubmit={async (e) => {
               e.preventDefault()
               try {
-                const v = Number(settingsMealValue)
-                const res = await fetch(`${API_BASE}/settings/mealExpense`, { method: 'PUT', headers: jsonAuthHeaders(), body: JSON.stringify({ value: v }) })
-                if (!res.ok) throw new Error('Erro')
-                setDefaultMealExpense(v)
+                const meal = Number(settingsMealValue)
+                const maintenance = Number(settingsMaintenanceValue)
+                const alignment = Number(settingsAlignmentValue)
+
+                const resMeal = await fetch(`${API_BASE}/settings/mealExpense`, { method: 'PUT', headers: jsonAuthHeaders(), body: JSON.stringify({ value: meal }) })
+                if (!resMeal.ok) throw new Error('Erro ao salvar alimentação')
+
+                const resMaint = await fetch(`${API_BASE}/settings/maintenanceInterval`, { method: 'PUT', headers: jsonAuthHeaders(), body: JSON.stringify({ value: maintenance }) })
+                if (!resMaint.ok) throw new Error('Erro ao salvar intervalo de manutenção')
+
+                const resAlign = await fetch(`${API_BASE}/settings/alignmentInterval`, { method: 'PUT', headers: jsonAuthHeaders(), body: JSON.stringify({ value: alignment }) })
+                if (!resAlign.ok) throw new Error('Erro ao salvar intervalo de alinhamento')
+
+                setDefaultMealExpense(meal)
+                setDefaultMaintenanceInterval(maintenance)
+                setDefaultAlignmentInterval(alignment)
                 setShowSettingsModal(false)
-                addToast('Padrão salvo', 'success')
+                addToast('Padrões salvos', 'success')
               } catch (err: any) { addToast(err?.message || 'Erro ao salvar', 'error') }
             }}>
               <div style={{ display: 'grid', gap: 8 }}>
                 <div>
                   <label style={labelStyle}>Alimentação (R$)</label>
                   <input value={settingsMealValue} onChange={e => setSettingsMealValue(e.target.value)} style={inputStyle} />
+                </div>
+                <div>
+                  <label style={labelStyle}>Intervalo Manutenção (dias)</label>
+                  <input value={settingsMaintenanceValue} onChange={e => setSettingsMaintenanceValue(e.target.value)} style={inputStyle} />
+                </div>
+                <div>
+                  <label style={labelStyle}>Intervalo Alinhamento (dias)</label>
+                  <input value={settingsAlignmentValue} onChange={e => setSettingsAlignmentValue(e.target.value)} style={inputStyle} />
                 </div>
               </div>
               <div style={{ marginTop: 14, display: 'flex', gap: 8, justifyContent: 'flex-end' }}>

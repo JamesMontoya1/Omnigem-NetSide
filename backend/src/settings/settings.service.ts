@@ -22,4 +22,17 @@ export class SettingsService {
     const n = Number(v)
     return isNaN(n) ? 70 : n
   }
+  async getDefaultMaintenanceInterval(): Promise<number> {
+    const v = await this.get('defaultMaintenanceIntervalDays')
+    if (v == null) return 60
+    const n = Number(v)
+    return isNaN(n) ? 60 : n
+  }
+
+  async getDefaultAlignmentInterval(): Promise<number> {
+    const v = await this.get('defaultAlignmentIntervalDays')
+    if (v == null) return 60
+    const n = Number(v)
+    return isNaN(n) ? 60 : n
+  }
 }
