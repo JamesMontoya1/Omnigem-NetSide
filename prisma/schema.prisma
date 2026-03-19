@@ -215,11 +215,11 @@ model Trip {
 
   vehicleId               Int?
   vehicle                 Vehicle? @relation(fields: [vehicleId], references: [id])
-  odometer                Decimal?   // Odômetro na saída
-  nextOilChange           DateTime?   // próxima troca de óleo
-  lastAlignment           DateTime?  // última alinhamento
-  odometerAtLastAlignment Decimal?   // odômetro na última alinhamento
-  lastMaintenance         DateTime?  // última manutenção
+  odometer                Decimal?   // Log Odômetro na saída
+  nextOilChange           DateTime?  // Log próxima troca de óleo
+  lastAlignment           DateTime?  // Log última alinhamento
+  odometerAtLastAlignment Decimal?   // Log odômetro na última alinhamento
+  lastMaintenance         DateTime?  // Log ultima manutenção
 
   date                 DateTime // Data de início da viagem
   startTime            String?  // Hora de início

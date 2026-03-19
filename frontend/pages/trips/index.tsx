@@ -19,6 +19,7 @@ type Worker = { id: number; name: string; doesTravel?: boolean; active?: boolean
 type Trip = {
   id: number; date: string; cityId: number; city?: City; vehicleId?: number; vehicle?: Vehicle
   startTime?: string
+  odometer?: number | string; nextOilChange?: string | null; lastAlignment?: string | null; odometerAtLastAlignment?: number | string; lastMaintenance?: string | null
   client?: string; serviceTypeId: number
   serviceType?: { id: number; name: string; code?: string }
   price?: number
@@ -36,6 +37,7 @@ type ExpenseCategory = { id: number; name: string; description?: string }
 
 const EMPTY_FORM = {
   date: '', startTime: '', cityId: '', vehicleId: '', client: '', serviceTypeId: '',
+  odometer: '', nextOilChange: '', lastAlignment: '', odometerAtLastAlignment: '', lastMaintenance: '',
   clients: [{ name: '', price: '', info: '' }],
   cities: [{ cityId: '', clients: [{ name: '', price: '', info: '' }], notes: '' }],
   mealExpense: '', fuelExpense: '', fuelInfo: '', extraExpense: '', price: '',
@@ -137,6 +139,7 @@ export default function Trips() {
   const [vehicleForm, setVehicleForm] = useState({ plate: '', model: '', notes: '',
     odometer: '', nextOilChange: '', lastAlignment: '', odometerAtLastAlignment: '', lastMaintenance: '' })
   const [editingVehicle, setEditingVehicle] = useState<Vehicle | null>(null)
+  const [vehicleModalFromTrip, setVehicleModalFromTrip] = useState(false)
 
   const [selectedVehicleId, setSelectedVehicleId] = useState<number | null>(null)
   const [vehicleExpenses, setVehicleExpenses] = useState<any[]>([])
@@ -167,7 +170,7 @@ export default function Trips() {
   const pendingEditingRef = useRef<Trip | null>(null)
 
   const [hoveredRow, setHoveredRow] = useState<number | null>(null)
-  const [hoveredNotif, setHoveredNotif] = useState<number | null>(null)
+  const [hoveredNotif, setHoveredNotif] = useState<string | null>(null)
   const [expandedIds, setExpandedIds] = useState<number[]>([])
 
   const [detailsTrip, setDetailsTrip] = useState<Trip | null>(null)
@@ -184,6 +187,9 @@ export default function Trips() {
   const [showNotifications, setShowNotifications] = useState(false)
   const notifRef = useRef<HTMLButtonElement | null>(null)
   const [notifPos, setNotifPos] = useState<{ top: number; left: number } | null>(null)
+  const [showOverdue, setShowOverdue] = useState(false)
+  const overdueRef = useRef<HTMLButtonElement | null>(null)
+  const [overduePos, setOverduePos] = useState<{ top: number; left: number } | null>(null)
 
   const [confirmDelete, setConfirmDelete] = useState<Trip | null>(null)
 
@@ -226,16 +232,19 @@ export default function Trips() {
 
   useEffect(() => {
     function onDoc(e: MouseEvent) {
-      if (!notifRef.current) return
       if (!(e.target instanceof Node)) return
       const pop = document.getElementById('notifications-popover')
-      if (notifRef.current.contains(e.target)) return
+      const overduePop = document.getElementById('overdue-popover')
+      if (notifRef.current && notifRef.current.contains(e.target)) return
+      if (overdueRef.current && overdueRef.current.contains(e.target)) return
       if (pop && pop.contains(e.target)) return
+      if (overduePop && overduePop.contains(e.target)) return
       setShowNotifications(false)
+      setShowOverdue(false)
     }
-    if (showNotifications) document.addEventListener('mousedown', onDoc)
+    if (showNotifications || showOverdue) document.addEventListener('mousedown', onDoc)
     return () => document.removeEventListener('mousedown', onDoc)
-  }, [showNotifications])
+  }, [showNotifications, showOverdue])
 
   const calendarDays = useMemo(() => {
     const year = calMonth.getFullYear()
@@ -456,6 +465,11 @@ export default function Trips() {
       cityId: String(t.cityId),
       cities: ((t as any).tripCities && Array.isArray((t as any).tripCities)) ? (t as any).tripCities.map((tc: any) => ({ cityId: String(tc.cityId), clients: (Array.isArray(tc.clients) ? tc.clients.map((name: any, idx: number) => ({ name: name ?? '', price: (tc.prices && tc.prices[idx]) != null ? String(tc.prices[idx]) : '', info: (tc.information && tc.information[idx]) ?? '' })) : []), notes: tc.notes ?? '' })) : [{ cityId: String(t.cityId ?? ''), clients: clientsForForm, notes: t.extraInfo ?? '' }],
       vehicleId: t.vehicleId ? String(t.vehicleId) : '',
+      odometer: t.odometer != null ? String(t.odometer) : '',
+      nextOilChange: t.nextOilChange ? toDateInput(String(t.nextOilChange)) : '',
+      lastAlignment: t.lastAlignment ? toDateInput(String(t.lastAlignment)) : '',
+      odometerAtLastAlignment: t.odometerAtLastAlignment != null ? String(t.odometerAtLastAlignment) : '',
+      lastMaintenance: t.lastMaintenance ? toDateInput(String(t.lastMaintenance)) : '',
       client: t.client ?? '',
       clients: clientsForForm,
       serviceTypeId: t.serviceTypeId ? String(t.serviceTypeId) : '',
@@ -476,8 +490,7 @@ export default function Trips() {
       note: t.note ?? '',
       endDate: t.endDate ? toDateInput(t.endDate) : '',
     })
-    // If the trip already had an explicit mealExpense stored, consider it edited.
-    // Otherwise allow auto-calculation based on selected travelers.
+
     setMealEdited(t.mealExpense != null)
     setSkipInitialCalc(true)
     setShowTripModal(true)
@@ -729,16 +742,18 @@ export default function Trips() {
     } catch { addToast('Erro ao excluir (pode ter viagens vinculadas)', 'error') }
   }
 
-  function openNewVehicle() { setEditingVehicle(null); setVehicleForm({ plate: '', model: '', notes: '', odometer: '', nextOilChange: '', lastAlignment: '', odometerAtLastAlignment: '', lastMaintenance: '' }); setShowVehicleModal(true) }
-  function openEditVehicle(v: Vehicle) {
+  function openNewVehicle() { setEditingVehicle(null); setVehicleForm({ plate: '', model: '', notes: '', odometer: '', nextOilChange: '', lastAlignment: '', odometerAtLastAlignment: '', lastMaintenance: '' }); setVehicleModalFromTrip(false); setShowVehicleModal(true) }
+  function openEditVehicle(v: Vehicle, fromTrip?: boolean) {
     setEditingVehicle(v)
+    const useFromTrip = Boolean(fromTrip)
+    setVehicleModalFromTrip(useFromTrip)
     setVehicleForm({
       plate: v.plate ?? '', model: v.model ?? '', notes: v.notes ?? '',
-      odometer: v.odometer != null ? String(v.odometer) : '',
-      nextOilChange: v.nextOilChange ? toDateInput(String(v.nextOilChange)) : '',
-      odometerAtLastAlignment: v.odometerAtLastAlignment != null ? String(v.odometerAtLastAlignment) : '',
-      lastAlignment: v.lastAlignment ? toDateInput(v.lastAlignment) : '',
-      lastMaintenance: v.lastMaintenance ? toDateInput(v.lastMaintenance) : '',
+      odometer: useFromTrip ? ((form as any).odometer ?? (v.odometer != null ? String(v.odometer) : '')) : (v.odometer != null ? String(v.odometer) : ''),
+      nextOilChange: useFromTrip ? ((form as any).nextOilChange ? toDateInput(String((form as any).nextOilChange)) : (v.nextOilChange ? toDateInput(String(v.nextOilChange)) : '')) : (v.nextOilChange ? toDateInput(String(v.nextOilChange)) : ''),
+      odometerAtLastAlignment: useFromTrip ? ((form as any).odometerAtLastAlignment ?? (v.odometerAtLastAlignment != null ? String(v.odometerAtLastAlignment) : '')) : (v.odometerAtLastAlignment != null ? String(v.odometerAtLastAlignment) : ''),
+      lastAlignment: useFromTrip ? ((form as any).lastAlignment ? toDateInput(String((form as any).lastAlignment)) : (v.lastAlignment ? toDateInput(String(v.lastAlignment)) : '')) : (v.lastAlignment ? toDateInput(String(v.lastAlignment)) : ''),
+      lastMaintenance: useFromTrip ? ((form as any).lastMaintenance ? toDateInput(String((form as any).lastMaintenance)) : (v.lastMaintenance ? toDateInput(String(v.lastMaintenance)) : '')) : (v.lastMaintenance ? toDateInput(String(v.lastMaintenance)) : ''),
     })
     setShowVehicleModal(true)
   }
@@ -757,6 +772,28 @@ export default function Trips() {
       const res = await fetch(url, { method, headers: jsonAuthHeaders(), body: JSON.stringify(payload) })
       if (!res.ok) throw new Error('Erro')
       addToast(editingVehicle ? 'Veículo atualizado' : 'Veículo criado', 'success')
+
+      if (vehicleModalFromTrip && editingTrip) {
+        try {
+          const tripPayload: any = {}
+          if (editingVehicle) tripPayload.vehicleId = editingVehicle.id
+          if (vehicleForm.odometer !== '') tripPayload.odometer = Number(String(vehicleForm.odometer).replace(',', '.'))
+          if (vehicleForm.nextOilChange) tripPayload.nextOilChange = new Date(vehicleForm.nextOilChange).toISOString()
+          if (vehicleForm.odometerAtLastAlignment !== '') tripPayload.odometerAtLastAlignment = Number(String(vehicleForm.odometerAtLastAlignment).replace(',', '.'))
+          if (vehicleForm.lastAlignment) tripPayload.lastAlignment = new Date(vehicleForm.lastAlignment).toISOString()
+          if (vehicleForm.lastMaintenance) tripPayload.lastMaintenance = new Date(vehicleForm.lastMaintenance).toISOString()
+
+          if (Object.keys(tripPayload).length) {
+            const tres = await fetch(`${API_BASE}/trips/${editingTrip.id}`, { method: 'PUT', headers: jsonAuthHeaders(), body: JSON.stringify(tripPayload) })
+            if (!tres.ok) throw new Error('Erro ao atualizar viagem')
+            addToast('Informações da viagem atualizadas', 'success')
+            await fetchTrips()
+          }
+        } catch (err) {
+          addToast('Veículo salvo, mas falha ao atualizar viagem', 'error')
+        }
+      }
+      setVehicleModalFromTrip(false)
       setShowVehicleModal(false); await fetchVehicles()
     } catch { addToast('Erro ao salvar veículo', 'error') }
   }
@@ -1110,7 +1147,19 @@ export default function Trips() {
           {canEdit && <button type="button" onClick={() => setShowManageWorkers(true)} style={btnNav}>👷 Trabalhadores</button>}
           <button
             type="button"
-            onClick={() => setTripsView(v => v === 'list' ? 'calendar' : 'list')}
+            onClick={() => setTripsView(v => {
+              const next = v === 'list' ? 'calendar' : 'list'
+              if (next === 'calendar') {
+                setFilterWorker('')
+                setFilterStart('')
+                setFilterEnd('')
+                setFilterCity('')
+                setFilterVehicle('')
+                setFilterType('')
+                setShowFilters(false)
+              }
+              return next
+            })}
             style={{
               ...btnNav,
               background: tripsView === 'calendar' ? PALETTE.primary : PALETTE.hoverBg,
@@ -1136,15 +1185,19 @@ export default function Trips() {
             </select>
           </div>
           <div style={{ flex: 1 }} />
+          
           {/* Notificações de viagens e manutenção */}
           {(() => {
+            const today = new Date()
+            today.setHours(0, 0, 0, 0)
+            const todayIso = isoDate(today)
             const tomorrow = new Date()
             tomorrow.setDate(tomorrow.getDate() + 1)
             const tt = isoDate(tomorrow)
-            const tripCount = trips.filter(tr => toDateInput(tr.date) === tt && !tr.completed).length
-
-            const today = new Date()
-            today.setHours(0, 0, 0, 0)
+            const tripCount = trips.filter(tr => {
+              const d = toDateInput(tr.date)
+              return (d === todayIso || d === tt) && !tr.completed
+            }).length
             const msPerDay = 24 * 60 * 60 * 1000
             const oilItems = (vehicles || []).filter(v => v.nextOilChange).map(v => {
               const iso = toDateInput(String(v.nextOilChange))
@@ -1177,7 +1230,46 @@ export default function Trips() {
             const count = tripCount + oilCount + alignmentCount + maintenanceCount
 
             return (
-              <button
+              <>
+                {(() => {
+                  const overdueCount = (trips || []).filter(tr => {
+                    if (tr.completed) return false
+                    const iso = toDateInput(tr.date)
+                    const d = parseLocalDate(iso)
+                    return d.getTime() < today.getTime()
+                  }).length
+                  if (!overdueCount) return null
+                  return (
+                    <button
+                      ref={overdueRef}
+                      type="button"
+                      onClick={() => {
+                        if (showOverdue) { setShowOverdue(false); return }
+                        setShowNotifications(false)
+                        const rect = overdueRef.current?.getBoundingClientRect()
+                        const popWidth = 520
+                        if (rect) {
+                          const left = Math.max(8, Math.min(rect.right - popWidth, window.innerWidth - popWidth - 8))
+                          setOverduePos({ top: rect.bottom + 8 + window.scrollY, left })
+                        }
+                        setShowOverdue(true)
+                      }}
+                      title="Viagens atrasadas - acesse para ajustar"
+                      style={{
+                        ...btnNav,
+                        marginRight: 8,
+                        background: PALETTE.error,
+                        color: '#fff',
+                        border: `1px solid ${PALETTE.border}`,
+                        position: 'relative'
+                      }}
+                    >
+                      ⚠️
+                      <span style={{ position: 'absolute', top: -6, right: -6, minWidth: 18, height: 18, borderRadius: 9, background: '#FF3B30', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, padding: '0 6px' }}>{overdueCount}</span>
+                    </button>
+                  )
+                })()}
+                <button
                 ref={notifRef}
                 type="button"
                 onClick={() => {
@@ -1205,6 +1297,7 @@ export default function Trips() {
                   <span style={{ position: 'absolute', top: -6, right: -6, minWidth: 18, height: 18, borderRadius: 9, background: '#FF3B30', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, padding: '0 6px' }}>{count}</span>
                 )}
               </button>
+              </>
             )
           })()}
           <button onClick={() => setTab('trips')} style={{
@@ -1885,7 +1978,22 @@ export default function Trips() {
                       <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                         <select
                           value={(form as any).vehicleId || ''}
-                          onChange={e => setForm({ ...form, vehicleId: e.target.value })}
+                          onChange={e => {
+                            const val = e.target.value
+                            setForm(f => {
+                              const newForm: any = { ...f, vehicleId: val }
+                              const vid = Number(val)
+                              const v = vehicles.find(x => x.id === vid)
+                              if (v) {
+                                if (!newForm.odometer && v.odometer != null) newForm.odometer = String(v.odometer)
+                                if (!newForm.nextOilChange && v.nextOilChange) newForm.nextOilChange = toDateInput(String(v.nextOilChange))
+                                if (!newForm.lastAlignment && v.lastAlignment) newForm.lastAlignment = toDateInput(String(v.lastAlignment))
+                                if (!newForm.odometerAtLastAlignment && v.odometerAtLastAlignment != null) newForm.odometerAtLastAlignment = String(v.odometerAtLastAlignment)
+                                if (!newForm.lastMaintenance && v.lastMaintenance) newForm.lastMaintenance = toDateInput(String(v.lastMaintenance))
+                              }
+                              return newForm
+                            })
+                          }}
                           style={{ ...selectStyle, flex: 1 }}
                         >
                           <option value="">Selecione...</option>
@@ -1902,7 +2010,7 @@ export default function Trips() {
                               if (!vid) { addToast('Selecione um veículo primeiro', 'error'); return }
                               const v = vehicles.find(x => x.id === vid)
                               if (!v) { addToast('Veículo não encontrado', 'error'); return }
-                              openEditVehicle(v)
+                              openEditVehicle(v, true)
                             }}
                             style={{ ...(btnSmall as any), padding: '6px 8px' }}
                           >Editar</button>
@@ -2241,14 +2349,24 @@ export default function Trips() {
             <div style={{ marginTop: 8 }}>
               <div style={{ color: PALETTE.textSecondary, marginBottom: 8 }}>Próximas viagens</div>
               {(() => {
+                const today = new Date()
+                today.setHours(0, 0, 0, 0)
                 const tomorrow = new Date()
                 tomorrow.setDate(tomorrow.getDate() + 1)
                 const tt = isoDate(tomorrow)
-                const items = trips.filter(tr => toDateInput(tr.date) === tt && !tr.completed)
-                if (items.length === 0) return <div style={{ color: PALETTE.textSecondary }}>Nenhuma viagem para amanhã.</div>
+                const todayIso = isoDate(today)
+                const items = trips.filter(tr => {
+                  const d = toDateInput(tr.date)
+                  return (d === todayIso || d === tt) && !tr.completed
+                })
+                if (items.length === 0) return <div style={{ color: PALETTE.textSecondary }}>Nenhuma viagem para hoje ou amanhã.</div>
                 return (
                   <div style={{ display: 'grid', gap: 8 }}>
-                    {items.map(t => (
+                    {items.map(t => {
+                      const isTodayTrip = toDateInput(t.date) === todayIso
+                      const itemBg = isTodayTrip ? `${PALETTE.error}33` : PALETTE.cardBg
+                      const itemBorder = isTodayTrip ? `1px solid ${PALETTE.error}88` : `1px solid ${PALETTE.border}`
+                      return (
                       <div
                         key={t.id}
                         onClick={() => {
@@ -2263,24 +2381,24 @@ export default function Trips() {
                             setPanelOpen(true)
                           }
                         }}
-                        onMouseEnter={() => setHoveredNotif(t.id)}
+                        onMouseEnter={() => setHoveredNotif(`trip-${t.id}`)}
                         onMouseLeave={() => setHoveredNotif(null)}
                         role="button"
                         tabIndex={0}
                         style={{
                           padding: 6,
                           borderRadius: 6,
-                          background: PALETTE.cardBg,
-                          border: `1px solid ${PALETTE.border}`,
+                          background: itemBg,
+                          border: itemBorder,
                           display: 'flex',
                           alignItems: 'center',
                           gap: 8,
                           minHeight: 44,
                           cursor: 'pointer',
                           transition: 'transform 0.2s ease, filter 0.2s ease, box-shadow 0.2s ease',
-                          transform: hoveredNotif === t.id ? 'translateY(-1px)' : 'translateY(0px)',
-                          filter: hoveredNotif === t.id ? 'brightness(1.12)' : undefined,
-                          boxShadow: hoveredNotif === t.id ? '0 2px 8px rgba(0,0,0,0.35)' : 'none',
+                          transform: hoveredNotif === `trip-${t.id}` ? 'translateY(-1px)' : 'translateY(0px)',
+                          filter: hoveredNotif === `trip-${t.id}` ? 'brightness(1.12)' : undefined,
+                          boxShadow: hoveredNotif === `trip-${t.id}` ? '0 2px 8px rgba(0,0,0,0.35)' : 'none',
                         }}
                       >
                         {(() => {
@@ -2291,14 +2409,15 @@ export default function Trips() {
                             <>
                               <div style={{ flex: 1, minWidth: 0 }}>
                                 <div style={{ fontWeight: 700, fontSize: 13, lineHeight: 1 }}>{t.serviceType?.name ?? 'Viagem'}</div>
-                                <div style={{ fontSize: 12, color: PALETTE.textSecondary, lineHeight: 1 }}>{dow} — {d.toLocaleDateString('pt-BR')} — {t.city?.name ?? '—'}</div>
+                                <div style={{ fontSize: 12, color: PALETTE.textSecondary, lineHeight: 1 }}>{dow} {d.toLocaleDateString('pt-BR')}{t.startTime ? ` - ${t.startTime}` : ''} — {t.city?.name ?? '—'}</div>
                               </div>
                               <div style={{ width: 120, textAlign: 'right', fontSize: 12, color: PALETTE.textSecondary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{equipe}</div>
                             </>
                           )
                         })()}
                       </div>
-                    ))}
+                    )
+                    })}
                   </div>
                 )
               })()}
@@ -2324,6 +2443,10 @@ export default function Trips() {
                       {oilItems.map(({ v, d, diff }) => {
                         const dow = ['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'][d.getDay()]
                         const rightInfo = v.model || v.notes || '—'
+                        const daysText = diff === 0 ? 'Hoje' : diff === 1 ? '1 dia' : `${diff} dias`
+                        const isDueToday = diff === 0
+                        const itemBg = isDueToday ? `${PALETTE.error}33` : PALETTE.cardBg
+                        const itemBorder = isDueToday ? `1px solid ${PALETTE.error}88` : `1px solid ${PALETTE.border}`
                         return (
                           <div
                             key={v.id}
@@ -2331,29 +2454,29 @@ export default function Trips() {
                               setShowNotifications(false)
                               if (canEdit) openEditVehicle(v)
                             }}
-                            onMouseEnter={() => setHoveredNotif(v.id)}
+                            onMouseEnter={() => setHoveredNotif(`vehicle-oil-${v.id}`)}
                             onMouseLeave={() => setHoveredNotif(null)}
                             role="button"
                             tabIndex={0}
                             style={{
                               padding: 6,
                               borderRadius: 6,
-                              background: PALETTE.cardBg,
-                              border: `1px solid ${PALETTE.border}`,
+                              background: itemBg,
+                              border: itemBorder,
                               display: 'flex',
                               alignItems: 'center',
                               gap: 8,
                               minHeight: 44,
                               cursor: 'pointer',
                               transition: 'transform 0.2s ease, filter 0.2s ease, box-shadow 0.2s ease',
-                              transform: hoveredNotif === v.id ? 'translateY(-1px)' : 'translateY(0px)',
-                              filter: hoveredNotif === v.id ? 'brightness(1.12)' : undefined,
-                              boxShadow: hoveredNotif === v.id ? '0 2px 8px rgba(0,0,0,0.35)' : 'none',
+                              transform: hoveredNotif === `vehicle-oil-${v.id}` ? 'translateY(-1px)' : 'translateY(0px)',
+                              filter: hoveredNotif === `vehicle-oil-${v.id}` ? 'brightness(1.12)' : undefined,
+                              boxShadow: hoveredNotif === `vehicle-oil-${v.id}` ? '0 2px 8px rgba(0,0,0,0.35)' : 'none',
                             }}
                           >
                             <div style={{ flex: 1, minWidth: 0 }}>
                               <div style={{ fontWeight: 700, fontSize: 13, lineHeight: 1 }}>{(v.model || v.plate) ? `${v.model ?? '—'} - ${v.plate ?? '—'}` : 'Veículo'}</div>
-                              <div style={{ fontSize: 12, color: PALETTE.textSecondary, lineHeight: 1 }}>{dow} - {d.toLocaleDateString('pt-BR')} - Troca de óleo</div>
+                              <div style={{ fontSize: 12, color: PALETTE.textSecondary, lineHeight: 1 }}>{dow} {d.toLocaleDateString('pt-BR')} - Troca de óleo — {daysText}</div>
                             </div>
                             <div style={{ display: 'flex', gap: 8, marginLeft: 8 }} />
                           </div>
@@ -2375,7 +2498,7 @@ export default function Trips() {
                     const iso = toDateInput(String(v.lastMaintenance))
                     const d0 = parseLocalDate(iso)
                     const d = new Date(d0.getFullYear(), d0.getMonth(), d0.getDate())
-                    d.setDate(d.getDate() + 60)
+                    d.setMonth(d.getMonth() + 2)
                     const diff = Math.ceil((d.getTime() - today.getTime()) / msPerDay)
                     return { v, d, diff }
                   }).filter(x => x.diff >= 0 && x.diff <= 30)
@@ -2386,6 +2509,10 @@ export default function Trips() {
                     <div style={{ display: 'grid', gap: 8 }}>
                       {maintItems.map(({ v, d, diff }) => {
                         const dow = ['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'][d.getDay()]
+                        const daysText = diff === 0 ? 'Hoje' : diff === 1 ? '1 dia' : `${diff} dias`
+                        const isDueToday = diff === 0
+                        const itemBg = isDueToday ? `${PALETTE.error}33` : PALETTE.cardBg
+                        const itemBorder = isDueToday ? `1px solid ${PALETTE.error}88` : `1px solid ${PALETTE.border}`
                         return (
                           <div
                             key={v.id}
@@ -2393,29 +2520,29 @@ export default function Trips() {
                               setShowNotifications(false)
                               if (canEdit) openEditVehicle(v)
                             }}
-                            onMouseEnter={() => setHoveredNotif(v.id)}
+                            onMouseEnter={() => setHoveredNotif(`vehicle-maint-${v.id}`)}
                             onMouseLeave={() => setHoveredNotif(null)}
                             role="button"
                             tabIndex={0}
                             style={{
                               padding: 6,
                               borderRadius: 6,
-                              background: PALETTE.cardBg,
-                              border: `1px solid ${PALETTE.border}`,
+                              background: itemBg,
+                              border: itemBorder,
                               display: 'flex',
                               alignItems: 'center',
                               gap: 8,
                               minHeight: 44,
                               cursor: 'pointer',
                               transition: 'transform 0.2s ease, filter 0.2s ease, box-shadow 0.2s ease',
-                              transform: hoveredNotif === v.id ? 'translateY(-1px)' : 'translateY(0px)',
-                              filter: hoveredNotif === v.id ? 'brightness(1.12)' : undefined,
-                              boxShadow: hoveredNotif === v.id ? '0 2px 8px rgba(0,0,0,0.35)' : 'none',
+                              transform: hoveredNotif === `vehicle-maint-${v.id}` ? 'translateY(-1px)' : 'translateY(0px)',
+                              filter: hoveredNotif === `vehicle-maint-${v.id}` ? 'brightness(1.12)' : undefined,
+                              boxShadow: hoveredNotif === `vehicle-maint-${v.id}` ? '0 2px 8px rgba(0,0,0,0.35)' : 'none',
                             }}
                           >
                             <div style={{ flex: 1, minWidth: 0 }}>
                               <div style={{ fontWeight: 700, fontSize: 13, lineHeight: 1 }}>{(v.model || v.plate) ? `${v.model ?? '—'} - ${v.plate ?? '—'}` : 'Veículo'}</div>
-                              <div style={{ fontSize: 12, color: PALETTE.textSecondary, lineHeight: 1 }}>{dow} - {d.toLocaleDateString('pt-BR')} - Manutenção</div>
+                              <div style={{ fontSize: 12, color: PALETTE.textSecondary, lineHeight: 1 }}>{dow} {d.toLocaleDateString('pt-BR')} - Manutenção — {daysText}</div>
                             </div>
                             <div style={{ display: 'flex', gap: 8, marginLeft: 8 }} />
                           </div>
@@ -2436,9 +2563,8 @@ export default function Trips() {
                   const alignItems = (vehicles || []).filter(v => v.lastAlignment).map(v => {
                     const iso = toDateInput(String(v.lastAlignment))
                     const d0 = parseLocalDate(iso)
-                    const d = new Date(d0.getFullYear(), d0.getMonth(), d0.getDate())
-                    d.setDate(d.getDate() + 60)
-                    const diff = Math.ceil((d.getTime() - today.getTime()) / msPerDay)
+                    const d = new Date(d0.getFullYear(), d0.getMonth() + 2, d0.getDate())
+                    const diff = Math.floor((d.getTime() - today.getTime()) / msPerDay)
                     return { v, d, diff }
                   }).filter(x => x.diff >= 0 && x.diff <= 30)
 
@@ -2448,36 +2574,40 @@ export default function Trips() {
                     <div style={{ display: 'grid', gap: 8 }}>
                       {alignItems.map(({ v, d, diff }) => {
                         const dow = ['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'][d.getDay()]
+                        const daysText = diff === 0 ? 'Hoje' : diff === 1 ? '1 dia' : `${diff} dias`
+                        const isDueToday = diff === 0
+                        const itemBg = isDueToday ? `${PALETTE.error}33` : PALETTE.cardBg
+                        const itemBorder = isDueToday ? `1px solid ${PALETTE.error}88` : `1px solid ${PALETTE.border}`
                         return (
                           <div
                             key={v.id}
                             onClick={() => {
-                              setShowNotifications(false)
-                              if (canEdit) openEditVehicle(v)
-                            }}
-                            onMouseEnter={() => setHoveredNotif(v.id)}
-                            onMouseLeave={() => setHoveredNotif(null)}
+                                  setShowNotifications(false)
+                                  if (canEdit) openEditVehicle(v)
+                                }}
+                                onMouseEnter={() => setHoveredNotif(`vehicle-align-${v.id}`)}
+                                onMouseLeave={() => setHoveredNotif(null)}
                             role="button"
                             tabIndex={0}
                             style={{
                               padding: 6,
                               borderRadius: 6,
-                              background: PALETTE.cardBg,
-                              border: `1px solid ${PALETTE.border}`,
+                              background: itemBg,
+                              border: itemBorder,
                               display: 'flex',
                               alignItems: 'center',
                               gap: 8,
                               minHeight: 44,
                               cursor: 'pointer',
                               transition: 'transform 0.2s ease, filter 0.2s ease, box-shadow 0.2s ease',
-                              transform: hoveredNotif === v.id ? 'translateY(-1px)' : 'translateY(0px)',
-                              filter: hoveredNotif === v.id ? 'brightness(1.12)' : undefined,
-                              boxShadow: hoveredNotif === v.id ? '0 2px 8px rgba(0,0,0,0.35)' : 'none',
+                              transform: hoveredNotif === `vehicle-align-${v.id}` ? 'translateY(-1px)' : 'translateY(0px)',
+                              filter: hoveredNotif === `vehicle-align-${v.id}` ? 'brightness(1.12)' : undefined,
+                              boxShadow: hoveredNotif === `vehicle-align-${v.id}` ? '0 2px 8px rgba(0,0,0,0.35)' : 'none',
                             }}
                           >
                             <div style={{ flex: 1, minWidth: 0 }}>
                               <div style={{ fontWeight: 700, fontSize: 13, lineHeight: 1 }}>{(v.model || v.plate) ? `${v.model ?? '—'} - ${v.plate ?? '—'}` : 'Veículo'}</div>
-                              <div style={{ fontSize: 12, color: PALETTE.textSecondary, lineHeight: 1 }}>{dow} - {d.toLocaleDateString('pt-BR')} - Alinhamento</div>
+                              <div style={{ fontSize: 12, color: PALETTE.textSecondary, lineHeight: 1 }}>{dow} {d.toLocaleDateString('pt-BR')} - Alinhamento — {daysText}</div>
                             </div>
                             <div style={{ display: 'flex', gap: 8, marginLeft: 8 }} />
                           </div>
@@ -2492,7 +2622,96 @@ export default function Trips() {
         </div>
       )}
 
-      {pendingHolidayConfirm && (
+          {showOverdue && overduePos && (
+            <div id="overdue-popover" style={{ position: 'absolute', top: overduePos.top, left: overduePos.left, width: 520, zIndex: 2000 }}>
+              <div style={{
+                  background: 'linear-gradient(rgb(22, 20, 20), rgb(53, 102, 151))',
+                  border: `1px solid ${PALETTE.border}`,
+                  borderRadius: 12,
+                  padding: 10,
+                  boxShadow: '0 20px 60px rgba(2,6,23,0.18), 0 8px 24px rgba(2,6,23,0.12)',
+                  transform: 'translateY(0px)',
+                  transition: 'transform 180ms ease, box-shadow 180ms ease',
+                  willChange: 'transform, box-shadow',
+                  maxHeight: '48vh',
+                  overflowY: 'auto'
+                }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <h3 style={{ margin: 0, fontSize: 16 }}>Viagens atrasadas - acesse para ajustar</h3>
+                  <button type="button" onClick={() => setShowOverdue(false)} style={btnCancel as any}>X</button>
+                </div>
+
+                <div style={{ marginTop: 8 }}>
+                  {(() => {
+                    const today = new Date()
+                    today.setHours(0, 0, 0, 0)
+                    const todayIso = isoDate(today)
+                    const items = (trips || []).filter(tr => {
+                      if (tr.completed) return false
+                      const iso = toDateInput(tr.date)
+                      const d = parseLocalDate(iso)
+                      return d.getTime() < today.getTime()
+                    })
+                    if (items.length === 0) return <div style={{ color: PALETTE.textSecondary }}>Nenhuma viagem atrasada.</div>
+                    return (
+                      <div style={{ display: 'grid', gap: 8 }}>
+                        {items.map(t => {
+                          const d = parseLocalDate(toDateInput(t.date))
+                          const dow = ['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'][d.getDay()]
+                          const equipe = Array.from(new Set([...(t.drivers || []).map((w: any) => w.name), ...(t.travelers || []).map((w: any) => w.name)])).join(', ') || '—'
+                          const itemBg = `${PALETTE.error}33`
+                          const itemBorder = `1px solid ${PALETTE.error}88`
+                          return (
+                            <div
+                              key={t.id}
+                              onClick={() => {
+                                setShowOverdue(false)
+                                if (canEdit) {
+                                  openEditTrip(t)
+                                } else {
+                                  setTripsView('calendar')
+                                  setCalMonth(new Date(d.getFullYear(), d.getMonth(), 1))
+                                  setSelectedDay(d)
+                                  setPanelOpen(true)
+                                }
+                              }}
+                              onMouseEnter={() => setHoveredNotif(`trip-${t.id}`)}
+                              onMouseLeave={() => setHoveredNotif(null)}
+                              role="button"
+                              tabIndex={0}
+                              style={{
+                                padding: 6,
+                                borderRadius: 6,
+                                background: itemBg,
+                                border: itemBorder,
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: 8,
+                                minHeight: 44,
+                                cursor: 'pointer',
+                                transition: 'transform 0.2s ease, filter 0.2s ease, box-shadow 0.2s ease',
+                                transform: hoveredNotif === `trip-${t.id}` ? 'translateY(-1px)' : 'translateY(0px)',
+                                filter: hoveredNotif === `trip-${t.id}` ? 'brightness(1.12)' : undefined,
+                                boxShadow: hoveredNotif === `trip-${t.id}` ? '0 2px 8px rgba(0,0,0,0.35)' : 'none',
+                              }}
+                            >
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ fontWeight: 700, fontSize: 13, lineHeight: 1 }}>{t.serviceType?.name ?? 'Viagem'}</div>
+                                <div style={{ fontSize: 12, color: PALETTE.textSecondary, lineHeight: 1 }}>{dow} {d.toLocaleDateString('pt-BR')}{t.startTime ? ` - ${t.startTime}` : ''} — {t.city?.name ?? '—'}</div>
+                              </div>
+                              <div style={{ width: 120, textAlign: 'right', fontSize: 12, color: PALETTE.textSecondary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{equipe}</div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )
+                  })()}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {pendingHolidayConfirm && (
         <div style={overlay} onClick={() => { setPendingHolidayConfirm(null); pendingPayloadRef.current = null; pendingEditingRef.current = null }}>
           <div style={modal} onClick={e => e.stopPropagation()}>
             <h2 style={{ margin: 0, marginBottom: 8 }}>Confirmar viagem para feriado{pendingHolidayConfirm.name ? ` — ${pendingHolidayConfirm.name}` : ''}?</h2>
@@ -2886,7 +3105,7 @@ export default function Trips() {
       )}
 
       {showVehicleModal && (
-        <div style={overlay} onClick={() => setShowVehicleModal(false)}>
+        <div style={overlay} onClick={() => { setShowVehicleModal(false); setVehicleModalFromTrip(false) }}>
           <div style={smallModal} onClick={e => e.stopPropagation()}>
             <h3 style={{ marginTop: 0 }}>{editingVehicle ? 'Editar Veículo' : 'Novo Veículo'}</h3>
             <form onSubmit={handleSaveVehicle}>
@@ -2935,7 +3154,7 @@ export default function Trips() {
                 </div>
               </div>
               <div style={{ marginTop: 14, display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                <button type="button" onClick={() => setShowVehicleModal(false)} style={btnCancel as any}>Cancelar</button>
+                <button type="button" onClick={() => { setShowVehicleModal(false); setVehicleModalFromTrip(false) }} style={btnCancel as any}>Cancelar</button>
                 <button type="submit" style={btnPrimary as any}>{editingVehicle ? 'Salvar' : 'Criar'}</button>
               </div>
             </form>
