@@ -95,6 +95,7 @@ model Rotation {
 // Lançamentos de férias
 model Vacation {
   id        Int      @id @default(autoincrement())
+
   workerId  Int
   worker    Worker   @relation(fields: [workerId], references: [id])
   startDate DateTime // Data de início das férias
@@ -103,6 +104,8 @@ model Vacation {
   sold      Boolean  @default(false) // Vendeu férias?
   active    Boolean  @default(true)  // Lançamento ativo?
   note      String?  // Observações
+
+  request   Int?      // 0 - Solicitação; 1 - Aprovado; 2 - Rejeitado; se for = null, é lançado como aprovado (para não precisar aprovar cada lançamento antigo)
   createdAt DateTime @default(now())
 }
 
