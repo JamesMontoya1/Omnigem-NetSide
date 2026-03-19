@@ -35,7 +35,6 @@ export default function RecurringPatternForm({ initial, initialRotation, onSave,
 
   useEffect(()=>{ if(initial){ setLimitRange(!!(initial.startDate || initial.endDate)); } }, [initial]);
 
-  // initialize rotation editing state when initialRotation provided
   useEffect(()=>{
     if(initialRotation && initialRotation.length){
       setIsRotation(true);
@@ -69,7 +68,6 @@ export default function RecurringPatternForm({ initial, initialRotation, onSave,
     const copy = [...r]; const tmp = copy[idx+1]; copy[idx+1] = copy[idx]; copy[idx] = tmp; return copy;
   });
 
-  // operations that keep ids in sync when editing an existing rotation
   const addMemberWithId = (id:number) => { setRotationMembers(r => r.includes(id) ? r : [...r, id]); setRotationIds(ids => [...ids, undefined]); };
   const removeMemberWithId = (idx:number) => { setRotationMembers(r => r.filter((_,i)=>i!==idx)); setRotationIds(ids => ids.filter((_,i)=>i!==idx)); };
   const moveUpWithId = (idx:number) => {
@@ -85,23 +83,17 @@ export default function RecurringPatternForm({ initial, initialRotation, onSave,
   const submit = async ()=>{
     if(isRotation){
       if(rotationMembers.length < 2) return alert('Select at least 2 workers for rotation');
-      // build payloads for each member, include ids when editing existing rotation
       const n = rotationMembers.length;
       const today = new Date().toISOString().slice(0,10);
-      // Quando houver "Schedule change from", usamos essa data como base
-      // e ajustamos para o primeiro dia da semana configurado (weekdays)
       let effectiveStart = limitRange ? (startDate || today) : today;
       if (scheduleChange && scheduleDate) {
         try {
           const base = new Date(`${scheduleDate}T00:00:00`);
           if (weekdays && weekdays.length) {
-            // início da semana (domingo) da data escolhida
             const weekStart = new Date(base);
             weekStart.setDate(weekStart.getDate() - weekStart.getDay());
             let cursor = new Date(weekStart);
             let found: Date | null = null;
-            // percorre de domingo até o dia selecionado e pega o primeiro dia
-            // cujo dia-da-semana esteja em weekdays (ex: sexta em [sexta,sábado])
             while (cursor <= base) {
               if (weekdays.includes(cursor.getDay())) {
                 found = new Date(cursor);

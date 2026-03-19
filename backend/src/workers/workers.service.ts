@@ -51,7 +51,6 @@ export class WorkersService {
     }
 
     if (removeAssignments) {
-      // delete assignments referencing this worker, delete recurring patterns, then delete worker
       return this.prisma.$transaction(async (tx) => {
         await tx.assignment.deleteMany({ where: { workerId: id } });
         await tx.recurringPattern.deleteMany({ where: { workerId: id } });

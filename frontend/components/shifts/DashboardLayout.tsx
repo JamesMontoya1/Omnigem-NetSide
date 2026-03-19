@@ -34,7 +34,6 @@ export default function DashboardLayout({ initialTab, dashboardContent }: {
     const token = typeof window !== 'undefined' ? localStorage.getItem('shifts_token') : null
     let storedRoles: string[] = []
     try { storedRoles = JSON.parse(localStorage.getItem('shifts_roles') || '[]') } catch {}
-    // Allow guest access (empty token) but require that roles are set
     if (token === null && storedRoles.length === 0) {
       router.push('/login')
       return

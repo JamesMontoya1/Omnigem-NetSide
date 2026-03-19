@@ -27,7 +27,6 @@ export class VehicleExpensesService {
     if (payload.amount != null) payload.amount = payload.amount === '' ? 0 : Number(payload.amount)
     if (payload.odometer != null) payload.odometer = payload.odometer === '' ? null : Number(payload.odometer)
     if (payload.date) payload.date = new Date(payload.date)
-    // handle category name -> find or create category and set categoryId
     if (payload.category && typeof payload.category === 'string' && payload.category.trim() !== '') {
       const name = payload.category.trim()
       let cat = await this.prisma.vehicleExpenseCategory.findUnique({ where: { name } })

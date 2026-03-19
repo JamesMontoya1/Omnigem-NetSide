@@ -1,9 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 
-// Parse dates coming from the frontend in a timezone-safe way.
-// Strings in the format YYYY-MM-DD are treated as local midnight to
-// avoid the "one day earlier" effect in negative timezones.
 function toPrismaDate(value: Date | string | null | undefined): Date | null {
   if (value == null) return null;
   if (value instanceof Date) return value;

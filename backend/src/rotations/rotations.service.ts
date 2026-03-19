@@ -193,8 +193,6 @@ export class RotationsService {
         const wId = workerForDate(chosen, new Date(d));
         if (wId != null) {
           const wInfo = workerMap.get(wId);
-          // If worker info is not present it means the worker is inactive
-          // and `includeInactive` was false -> skip this entry.
           if (!wInfo) continue;
           const day = ensureDay(iso);
           day.entries.push({
@@ -224,8 +222,6 @@ export class RotationsService {
       day.entries = day.entries.filter((e) => e.source !== 'ROTATION');
       for (const a of dayAssignments) {
         if (a.source === 'MANUAL') {
-            // If assignment references an inactive worker and includeInactive is false,
-            // that worker won't be present in workerMap — skip the entry.
             if (a.workerId && !workerMap.has(a.workerId)) continue;
             const wInfo = a.workerId ? workerMap.get(a.workerId) : undefined;
             day.entries.push({

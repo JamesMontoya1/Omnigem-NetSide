@@ -3,7 +3,6 @@ import { AppModule } from './app.module';
 import * as path from 'path';
 import * as dotenv from 'dotenv';
 
-// Load the root .env so all env vars are available
 dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
 async function bootstrap() {

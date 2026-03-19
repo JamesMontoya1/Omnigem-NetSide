@@ -72,7 +72,6 @@ export class VacationsService {
     return this.prisma.vacation.delete({ where: { id } });
   }
 
-  /** Resumo de férias de todos os trabalhadores ativos */
   async summary() {
     const workers = await this.prisma.worker.findMany({
       where: { active: true },
@@ -85,25 +84,20 @@ export class VacationsService {
     return workers.map(w => {
       const hireDate = w.hireDate ? new Date(w.hireDate) : null;
 
-      // Anos trabalhados (tempo de casa)
       let yearsWorked = 0;
       if (hireDate) {
         const diff = today.getTime() - hireDate.getTime();
         yearsWorked = Math.floor(diff / (365.25 * 24 * 60 * 60 * 1000));
       }
 
-      // Total de dias acumulados (30 dias por ano trabalhado)
       const totalEarned = yearsWorked * 30;
 
-      // Total de dias já utilizados (apenas lançamentos ativos cujo startDate já chegou)
       const totalUsed = w.vacations
         .filter(v => v.active && new Date(v.startDate) <= today)
         .reduce((sum, v) => sum + v.daysUsed, 0);
 
-      // Saldo pendente (pode ser negativo se já utilizou mais dias que acumulou)
       const pendingDays = totalEarned - totalUsed;
 
-      // Próximas férias agendadas (startDate no futuro)
       const upcoming = w.vacations
         .filter(v => v.active && new Date(v.startDate) > today)
         .sort((a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime());

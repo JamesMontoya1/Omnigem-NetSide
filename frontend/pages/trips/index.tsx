@@ -615,7 +615,6 @@ export default function Trips() {
       endDate: toIsoSafe(form.endDate),
     }
 
-    // include optional departure time
     if ((form as any).startTime) payload.startTime = (form as any).startTime
 
     if ((form as any).cities && Array.isArray((form as any).cities) && (form as any).cities.length > 0) {
@@ -661,7 +660,6 @@ export default function Trips() {
       payload.remainingAutonomy = num(form.remainingAutonomy)
     }
     try {
-      // verifica se a data é feriado; se for, mostra modal bonitinho em vez de confirm()
       try {
         let hList = holidays
         if (!hList || (Array.isArray(hList) && hList.length === 0)) {

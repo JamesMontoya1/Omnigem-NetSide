@@ -3,7 +3,6 @@ import * as bcrypt from 'bcrypt';
 import * as path from 'path';
 import * as dotenv from 'dotenv';
 
-// Load root .env so the seed works when invoked from the monorepo root
 dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
 
 async function main() {

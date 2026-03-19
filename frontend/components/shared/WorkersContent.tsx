@@ -135,8 +135,6 @@ export default function WorkersContent({ readOnly = false, showTitle = true, onC
     if (!confirm('Demitir este trabalhador?')) return
     const termination = todayIso()
 
-    // If worker already has a terminationDate, do not overwrite it.
-    // clear color when marking inactive
     const payload: any = { active: false, color: null }
 
     try {
@@ -153,10 +151,8 @@ export default function WorkersContent({ readOnly = false, showTitle = true, onC
         return
       }
       addToast('Trabalhador demitido', 'success')
-      // Se estiver editando este trabalhador no modal, atualiza a data localmente
       if (editingId === worker.id && !worker.terminationDate) {
         setTerminationDate(termination)
-        // clear color in the modal immediately
         setColor('')
       }
       await fetchWorkers()
@@ -170,7 +166,6 @@ export default function WorkersContent({ readOnly = false, showTitle = true, onC
   async function remove(id: number) {
     if (!confirm('Apagar este trabalhador?')) return
 
-    // ask whether also remove assignments and recurring patterns
     const removeDeps = confirm('Remover todas as atribuições e padrões recorrentes deste trabalhador?\n\nOK = Sim, Cancel = Não')
 
     try {

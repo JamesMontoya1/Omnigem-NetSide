@@ -20,7 +20,6 @@ async function main() {
   const raw = fs.readFileSync(backupPath, 'utf8')
   const data = JSON.parse(raw)
 
-  // Map das chaves do JSON para os nomes dos modelos do Prisma
   const mapping: Record<string, string> = {
     users: 'user',
     workers: 'worker',
@@ -33,7 +32,6 @@ async function main() {
     trips: 'trip',
   }
 
-  // Ordem sugerida de restauração para respeitar chaves estrangeiras
   const restoreOrder = [
     'users',
     'workers',
@@ -53,7 +51,6 @@ async function main() {
 
     if (item == null) return
 
-    // Se houver `id`, usamos upsert por id; caso contrário, tentamos create
     if (item.id !== undefined && item.id !== null) {
       try {
         await model.upsert({
@@ -81,7 +78,6 @@ async function main() {
     console.log(`Restaurando ${arr.length} registros em ${modelName}...`)
 
     for (const item of arr) {
-      // Atenção: dependendo das relações, pode ser necessário limpar relacionamentos temporários
       await upsertItem(modelName, item)
     }
   }

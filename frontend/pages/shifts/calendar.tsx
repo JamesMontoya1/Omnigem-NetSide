@@ -146,7 +146,6 @@ export default function CalendarPage() {
       const fetched = await r.json();
       setCalendar(prev => ({ ...prev, ...fetched }));
     } catch {
-      // preserve existing calendar data on error to avoid clearing notifications
     }
   }, []);
 

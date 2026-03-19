@@ -38,7 +38,6 @@ export class TripsService {
     if (payload.fuelExpense != null) {
       payload.fuelExpense = Number(payload.fuelExpense)
     }
-    // normalize vehicle-related fields if present
     const vehicleFields = ['odometer', 'nextOilChange', 'lastAlignment', 'odometerAtLastAlignment', 'lastMaintenance']
     const vehiclePayload: any = {}
     for (const f of vehicleFields) {
@@ -66,7 +65,6 @@ export class TripsService {
       delete payload.notesExtraExpense
     }
     if (payload.travelerIds) {
-      // ensure travelers exist
       const travelerIds = payload.travelerIds.map((id: any) => Number(id))
       const travelersCount = await this.prisma.worker.count({ where: { id: { in: travelerIds } } })
       if (travelersCount !== travelerIds.length) throw new Error('One or more travelerIds not found')
@@ -95,14 +93,11 @@ export class TripsService {
 
     try {
       const created = await this.prisma.trip.create({ data: tripCreateData, include: { tripCities: { include: { city: true } }, vehicle: true, travelers: true, drivers: true, serviceType: true } } as any)
-      // if trip has a vehicle and vehicle payload fields were provided, update vehicle
       if (created.vehicleId && Object.keys(vehiclePayload).length) {
         try {
           await this.prisma.vehicle.update({ where: { id: created.vehicleId }, data: vehiclePayload })
-          // reload created trip so vehicle reflects updated values
           return await this.prisma.trip.findUnique({ where: { id: created.id }, include: { tripCities: { include: { city: true } }, vehicle: true, travelers: true, drivers: true, serviceType: true } } as any)
         } catch (err: any) {
-          // if vehicle update fails, still return created trip but surface a warning via thrown error
           throw new Error(`Trip created but failed updating vehicle: ${err?.message || String(err)}`)
         }
       }
@@ -116,7 +111,6 @@ export class TripsService {
     const payload: any = { ...data }
     if (payload.date) payload.date = new Date(payload.date)
     if (payload.endDate) payload.endDate = new Date(payload.endDate)
-    // normalize vehicle-related fields if present
     const vehicleFields = ['odometer', 'nextOilChange', 'lastAlignment', 'odometerAtLastAlignment', 'lastMaintenance']
     const vehiclePayload: any = {}
     for (const f of vehicleFields) {
@@ -172,12 +166,10 @@ export class TripsService {
 
     const updated = await this.prisma.trip.update({ where: { id }, data: payload, include: { tripCities: { include: { city: true } }, vehicle: true, travelers: true, drivers: true, serviceType: true } } as any)
 
-    // determine vehicle id to update: prefer payload.vehicleId if provided, otherwise use updated.vehicleId
     const vehicleIdToUpdate = payload.vehicleId ?? updated.vehicleId
     if (vehicleIdToUpdate && Object.keys(vehiclePayload).length) {
       try {
         await this.prisma.vehicle.update({ where: { id: Number(vehicleIdToUpdate) }, data: vehiclePayload })
-        // reload and return trip with refreshed vehicle
         return await this.prisma.trip.findUnique({ where: { id: updated.id }, include: { tripCities: { include: { city: true } }, vehicle: true, travelers: true, drivers: true, serviceType: true } } as any)
       } catch (err: any) {
         throw new Error(`Trip updated but failed updating vehicle: ${err?.message || String(err)}`)
@@ -196,7 +188,6 @@ export class TripsService {
   }
 
   async remove(id: number) {
-    // delete related trip cities first to avoid FK RESTRICT errors
     return this.prisma.$transaction(async prisma => {
       await prisma.tripCity.deleteMany({ where: { tripId: id } })
       return prisma.trip.delete({ where: { id } })
