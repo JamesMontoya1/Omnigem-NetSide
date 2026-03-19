@@ -10,6 +10,9 @@ import { useToast } from '../../components/shared/ToastProvider'
 import WorkersContent from '../../components/shared/WorkersContent'
 import CurrencyInput from '../../components/shared/CurrencyInput'
 import { num, formatTwo } from '../../components/shared/formatUtils'
+import CitiesTab from './CitiesTab'
+import VehiclesTab from './VehiclesTab'
+import ServiceTypesTab from './ServiceTypesTab'
 
 type City = { id: number; name: string; state?: string; country?: string }
 type Vehicle = { id: number; plate?: string; model?: string; notes?: string;
@@ -105,6 +108,11 @@ const cellStyle: React.CSSProperties = {
 
 const MONTHS = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro']
 const WEEKDAYS = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado']
+
+import TripModal from './TripModal'
+
+import NotificationsPopover from './NotificationsPopover'
+import OverduePopover from './OverduePopover'
 
 export default function Trips() {
   const router = useRouter()
@@ -1633,7 +1641,7 @@ export default function Trips() {
                                       const textColor = eventColor === PALETTE.warning ? '#000000' : '#ffffff'
                                       return (
                                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', background: eventColor, color: textColor, borderRadius: 3, padding: '2px 6px' }}>
-                                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', display: 'block', maxWidth: 'calc(100% - 24px)' }}>{t.serviceType?.name ?? 'Viagem'}</span>
+                                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', display: 'block', maxWidth: 'calc(100% - 24px)' }}>{t.startTime ? `${t.startTime} — ${t.serviceType?.name ?? 'Viagem'}` : (t.serviceType?.name ?? 'Viagem')}</span>
                                           {showMore && (
                                             <span style={{ marginLeft: 6, fontSize: 11, color: textColor, flexShrink: 0 }}>+{moreCount}</span>
                                           )}
@@ -1661,8 +1669,30 @@ export default function Trips() {
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
                           <strong>{sidebarFilter === 'completed' ? 'Viagens concluídas' : 'Viagens pendentes'}</strong>
                           <div style={{ display: 'flex', gap: 8 }}>
-                            <button type="button" onClick={() => setSidebarFilter('completed')} style={{ ...(btnSmallBlue as any), ...(sidebarFilter === 'completed' ? { background: PALETTE.primary, color: '#fff', border: 'none' } : {}) }}>Completas</button>
-                            <button type="button" onClick={() => setSidebarFilter('pending')} style={{ ...(btnSmallBlue as any), ...(sidebarFilter === 'pending' ? { background: PALETTE.primary, color: '#fff', border: 'none' } : {}) }}>Pendentes</button>
+                            <button
+                              type="button"
+                              onClick={() => setSidebarFilter('completed')}
+                              style={{
+                                ...(btnSmallBlue as any),
+                                ...(sidebarFilter === 'completed'
+                                  ? { background: PALETTE.primary, color: '#fff', border: 'none' }
+                                  : { background: PALETTE.cardBg, color: PALETTE.textSecondary, border: `1px solid ${PALETTE.border}` }),
+                              }}
+                            >
+                              Completas
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setSidebarFilter('pending')}
+                              style={{
+                                ...(btnSmallBlue as any),
+                                ...(sidebarFilter === 'pending'
+                                  ? { background: PALETTE.primary, color: '#fff', border: 'none' }
+                                  : { background: PALETTE.cardBg, color: PALETTE.textSecondary, border: `1px solid ${PALETTE.border}` }),
+                              }}
+                            >
+                              Pendentes
+                            </button>
                           </div>
                         </div>
                         {list.length === 0 && <div style={{ color: PALETTE.textSecondary }}>{sidebarFilter === 'completed' ? 'Nenhuma viagem marcada como concluída.' : 'Nenhuma viagem pendente.'}</div>}
@@ -1678,7 +1708,7 @@ export default function Trips() {
                             >
                               <div style={{ minWidth: 0 }}>
                                 <div style={{ fontWeight: 700, fontSize: 13 }}>{(t.serviceType?.name ?? 'Viagem')}{(t as any).clients && Array.isArray((t as any).clients) ? ` - ${(t as any).clients.map((c: any) => c.name).join(', ')}` : (t.client ? ` - ${t.client}` : '')}</div>
-                                <div style={{ fontSize: 12, color: PALETTE.textSecondary }}>{parseLocalDate(toDateInput(t.date)).toLocaleDateString('pt-BR')} — {t.city?.name ?? '—'}</div>
+                                <div style={{ fontSize: 12, color: PALETTE.textSecondary }}>{parseLocalDate(toDateInput(t.date)).toLocaleDateString('pt-BR')}{t.startTime ? ` — ${t.startTime}` : ''} — {t.city?.name ?? '—'}</div>
                                 <div style={{ fontSize: 12, color: PALETTE.textSecondary }}>Equipe: {equipe}</div>
                               </div>
                             </div>
@@ -1743,7 +1773,7 @@ export default function Trips() {
                               style={{ padding: '10px 12px', borderRadius: 8, background: PALETTE.backgroundSecondary, border: `1px solid ${PALETTE.border}`, cursor: canEdit ? 'pointer' : 'default', display: 'flex', flexDirection: 'column', gap: 6, borderLeft: `6px solid ${eventColor}` }}
                             >
                               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                                <div style={{ fontWeight: 700 }}>{`${tripDayOfWeek} - ${tripDateStr} - ${typeName}`}</div>
+                                <div style={{ fontWeight: 700 }}>{`${tripDayOfWeek} - ${tripDateStr}${t.startTime ? ` - ${t.startTime}` : ''} - ${typeName}`}</div>
                                 <div style={{ width: 10, height: 10, borderRadius: 6, background: eventColor }} />
                               </div>
                               <div style={{ fontSize: 13, color: PALETTE.textSecondary }}>Destino: {destino}</div>
@@ -1818,13 +1848,13 @@ export default function Trips() {
                 </select>
               </div>
               <div>
-                      <label style={labelStyle}>Tipo</label>
-                      <select value={filterType} onChange={e => setFilterType(e.target.value)} style={{ ...selectStyle, width: 140 }}>
-                        <option value="">Todos</option>
-                        {serviceTypes.map(s => (
-                          <option key={s.id} value={s.id}>{s.name}</option>
-                        ))}
-                      </select>
+                <label style={labelStyle}>Tipo</label>
+                <select value={filterType} onChange={e => setFilterType(e.target.value)} style={{ ...selectStyle, width: 140 }}>
+                  <option value="">Todos</option>
+                  {serviceTypes.map(s => (
+                    <option key={s.id} value={s.id}>{s.name}</option>
+                  ))}
+                </select>
               </div>
               
             </div>
@@ -1860,1137 +1890,143 @@ export default function Trips() {
         )}
 
         {/* Tab de cidades */}
-        {tab === 'cities' && <>
-          <div style={{ display: 'flex', padding: '0 24px', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-            <h3 style={{ margin: 0 }}>Cidades</h3>
-            {canEdit && <button onClick={openNewCity} style={btnPrimary as any}>+ Nova Cidade</button>}
-          </div>
-          <div style={{ display: 'grid', padding: '0 24px', gap: 6 }}>
-            {cities.map(c => (
-              <div key={c.id} style={{ ...cardStyle, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div>
-                  <span style={{ fontWeight: 600 }}>{c.name}</span>
-                  {c.state && <span style={{ color: PALETTE.textSecondary, marginLeft: 6, fontSize: 13 }}>— {c.state}</span>}
-                  {c.country && c.country !== 'BR' && <span style={{ color: PALETTE.textSecondary, marginLeft: 4, fontSize: 12 }}>({c.country})</span>}
-                </div>
-                <div style={{ display: 'flex', gap: 4 }}>
-                  {canEdit ? (
-                    <>
-                      <button onClick={() => openEditCity(c)} style={btnSmallBlue as any}>Editar</button>
-                      <button onClick={() => handleDeleteCity(c.id)} style={btnSmallRed as any}>Excluir</button>
-                    </>
-                  ) : null}
-                </div>
-              </div>
-            ))}
-            {cities.length === 0 && <div style={{ color: PALETTE.textSecondary }}>Nenhuma cidade cadastrada.</div>}
-          </div>
-        </>}
+        {tab === 'cities' && (
+          <CitiesTab
+            cities={cities}
+            canEdit={canEdit}
+            openNewCity={openNewCity}
+            openEditCity={openEditCity}
+            handleDeleteCity={handleDeleteCity}
+          />
+        )}
 
         {/* Tab de veiculos */}
-        {tab === 'vehicles' && <>
-              <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', padding: '0 24px' }}>
-            {/* Lista de veículos */}
-            <div style={{ flex: 1, minWidth: 280 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                <h3 style={{ margin: 0 }}>Veículos</h3>
-                {canEdit && <button onClick={openNewVehicle} style={btnPrimary as any}>+ Novo Veículo</button>}
-              </div>
-              <div style={{ display: 'grid', gap: 6 }}>
-                {vehicles.map(v => (
-                  <div key={v.id} onClick={() => setSelectedVehicleId(v.id)} style={{ ...cardStyle, display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', background: selectedVehicleId === v.id ? PALETTE.hoverBg : undefined }}>
-                    <div>
-                      <span style={{ fontWeight: 600 }}>{v.model ?? '—'}</span>
-                      {v.plate && <span style={{ color: PALETTE.textSecondary, marginLeft: 8, fontSize: 13 }}>Placa: {v.plate}</span>}
-                      {v.notes && <div style={{ fontSize: 12, color: PALETTE.textSecondary, marginTop: 2 }}>{v.notes}</div>}
-                    </div>
-                    <div style={{ display: 'flex', gap: 4 }}>
-                      {canEdit ? (
-                        <>
-                          <button onClick={(e) => { e.stopPropagation(); openEditVehicle(v); setSelectedVehicleId(v.id) }} style={btnSmallBlue as any}>Editar</button>
-                          <button onClick={(e) => { e.stopPropagation(); handleDeleteVehicle(v.id); if (selectedVehicleId === v.id) setSelectedVehicleId(null) }} style={btnSmallRed as any}>Excluir</button>
-                        </>
-                      ) : null}
-                    </div>
-                  </div>
-                ))}
-                {vehicles.length === 0 && <div style={{ color: PALETTE.textSecondary }}>Nenhum veículo cadastrado.</div>}
-              </div>
-            </div>
-
-            <div style={{ width: 1, background: PALETTE.border, alignSelf: 'stretch', margin: '0 8px' }} />
-
-            {/* Lista de despesas do veículo selecionado */}
-            <div style={{ width: 560, minWidth: 320 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                <h3 style={{ margin: 0 }}>{selectedVehicleId ? 'Despesas do Veículo' : 'Despesas (selecione um veículo)'}</h3>
-                {selectedVehicleId && (
-                  <div>
-                    {canEdit && <button onClick={() => { setEditingExpense(null); setExpenseForm({ date: '', categoryId: '', amount: '', currency: 'BRL', odometer: '', receiptUrl: '', notes: '', workerId: '' }); setShowExpenseModal(true) }} style={btnPrimary as any}>+ Nova Despesa</button>}
-                    <button onClick={() => setShowCategories(s => !s)} style={{ ...btnNav, marginLeft: 8 }}>{showCategories ? 'Ocultar Categorias' : 'Mostrar Categorias'}</button>
-                  </div>
-                )}
-              </div>
-              <div style={{ display: 'grid', gap: 6 }}>
-                {!selectedVehicleId && <div style={{ color: PALETTE.textSecondary }}>Selecione um veículo à esquerda.</div>}
-                {selectedVehicleId && loadingExpenses && <div style={{ color: PALETTE.textSecondary }}>Carregando despesas...</div>}
-                {selectedVehicleId && !loadingExpenses && vehicleExpenses.length === 0 && <div style={{ color: PALETTE.textSecondary }}>Nenhuma despesa registrada.</div>}
-                {selectedVehicleId && vehicleExpenses.slice().sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map(e => (
-                  <div key={e.id} style={{ ...cardStyle, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                    <div>
-                      <div style={{ fontWeight: 700 }}>{new Date(e.date).toLocaleDateString('pt-BR')} {e.category ? `— ${e.category.name}` : ''}</div>
-                      {e.notes && <div style={{ color: PALETTE.textSecondary, marginTop: 6 }}>{truncate(e.notes, 120)}</div>}
-                    </div>
-                    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                      <div style={{ fontWeight: 700 }}>{money(e.amount)}</div>
-                        <div style={{ display: 'flex', gap: 4 }}>
-                          {canEdit ? (
-                            <>
-                              <button onClick={() => { setEditingExpense(e); setExpenseForm({ date: toDateInput(e.date), categoryId: e.category ? String(e.category.id) : '', amount: formatTwo(e.amount ?? ''), currency: e.currency ?? 'BRL', odometer: e.odometer ?? '', receiptUrl: e.receiptUrl ?? '', notes: e.notes ?? '', workerId: e.workerId ?? '' }); setShowExpenseModal(true) }} style={btnSmallBlue as any}>Editar</button>
-                              <button onClick={() => handleDeleteExpense(e.id)} style={btnSmallRed as any}>Excluir</button>
-                            </>
-                          ) : null}
-                        </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {showCategories && <div style={{ width: 1, background: PALETTE.border, alignSelf: 'stretch', margin: '0 8px' }} />}
-
-            {showCategories && (
-              <div style={{ width: 420, minWidth: 260 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                  <h3 style={{ margin: 0 }}>Categorias de Despesa</h3>
-                  {canEdit && <button onClick={openNewCategory} style={btnPrimary as any}>+ Nova Categoria</button>}
-                </div>
-                <div style={{ display: 'grid', gap: 6 }}>
-                  {expenseCategories.map(c => (
-                    <div key={c.id} style={{ ...cardStyle, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <div>
-                        <div style={{ fontWeight: 600 }}>{c.name}</div>
-                        {c.description && <div style={{ fontSize: 12, color: PALETTE.textSecondary }}>{truncate(c.description, 80)}</div>}
-                      </div>
-                      <div style={{ display: 'flex', gap: 6 }}>
-                        {canEdit ? (
-                          <>
-                            <button onClick={() => openEditCategory(c)} style={btnSmallBlue as any}>Editar</button>
-                            <button onClick={() => handleDeleteCategory(c.id)} style={btnSmallRed as any}>Excluir</button>
-                          </>
-                        ) : null}
-                      </div>
-                    </div>
-                  ))}
-                  {expenseCategories.length === 0 && <div style={{ color: PALETTE.textSecondary }}>Nenhuma categoria cadastrada.</div>}
-                </div>
-              </div>
-            )}
-          </div>
-        </>}
+        {tab === 'vehicles' && (
+          <VehiclesTab
+            vehicles={vehicles}
+            canEdit={canEdit}
+            openNewVehicle={openNewVehicle}
+            openEditVehicle={openEditVehicle}
+            handleDeleteVehicle={handleDeleteVehicle}
+            selectedVehicleId={selectedVehicleId}
+            setSelectedVehicleId={setSelectedVehicleId}
+            showCategories={showCategories}
+            setShowCategories={setShowCategories}
+            loadingExpenses={loadingExpenses}
+            vehicleExpenses={vehicleExpenses}
+            setEditingExpense={setEditingExpense}
+            setExpenseForm={setExpenseForm}
+            setShowExpenseModal={setShowExpenseModal}
+            handleDeleteExpense={handleDeleteExpense}
+            expenseCategories={expenseCategories}
+            openNewCategory={openNewCategory}
+            openEditCategory={openEditCategory}
+            handleDeleteCategory={handleDeleteCategory}
+          />
+        )}
 
         {/* Tab de tipos de serviço */}
-        {tab === 'serviceTypes' && <>
-          <div style={{ display: 'flex', padding: '0 24px', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-            <h3 style={{ margin: 0 }}>Tipos</h3>
-            {canEdit && <button onClick={openNewServiceType} style={btnPrimary as any}>+ Novo Tipo</button>}
-          </div>
-          <div style={{ display: 'grid', padding: '0 24px', gap: 6 }}>
-            {serviceTypes.map(s => (
-              <div key={s.id} style={{ ...cardStyle, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div>
-                  <span style={{ fontWeight: 600 }}>{s.name}</span>
-                  {s.code && <span style={{ color: PALETTE.textSecondary, marginLeft: 6, fontSize: 13 }}>— {s.code}</span>}
-                </div>
-                <div style={{ display: 'flex', gap: 4 }}>
-                  {canEdit ? (
-                    <>
-                      <button onClick={() => openEditServiceType(s)} style={btnSmallBlue as any}>Editar</button>
-                      <button onClick={() => handleDeleteServiceType(s.id)} style={btnSmallRed as any}>Excluir</button>
-                    </>
-                  ) : null}
-                </div>
-              </div>
-            ))}
-            {serviceTypes.length === 0 && <div style={{ color: PALETTE.textSecondary }}>Nenhum tipo cadastrado.</div>}
-          </div>
-        </>}
+        {tab === 'serviceTypes' && (
+          <ServiceTypesTab
+            serviceTypes={serviceTypes}
+            canEdit={canEdit}
+            openNewServiceType={openNewServiceType}
+            openEditServiceType={openEditServiceType}
+            handleDeleteServiceType={handleDeleteServiceType}
+          />
+        )}
 
       </div>
 
-      {showTripModal && (
-        <div style={overlay} onClick={() => setShowTripModal(false)}>
-          <div style={modal} onClick={e => e.stopPropagation()}>
-            <h3 style={{ marginTop: 0 }}>{editingTrip ? 'Editar Viagem' : 'Nova Viagem'}</h3>
-            <form onSubmit={handleSaveTrip}>
-              <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 12 }}>
-                <div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 0.4fr 1fr 1fr', gap: 8 }}>
-                    <div>
-                      <label style={labelStyle}>Data *</label>
-                      <input
-                        required
-                        type="date"
-                        value={form.date}
-                        onChange={e => {
-                          const newDate = e.target.value
-                          setForm(f => {
-                            const prevDate = f.date
-                            const shouldSyncEnd = !f.endDate || f.endDate === prevDate
-                            return { ...f, date: newDate, endDate: shouldSyncEnd ? newDate : f.endDate }
-                          })
-                        }}
-                        style={ inputStyle }
-                      />
-                    </div>
-                    <div>
-                      <label style={labelStyle}>Hora Saída</label>
-                      <input
-                        type="time"
-                        value={(form as any).startTime || ''}
-                        onChange={e => setForm({ ...form, startTime: e.target.value })}
-                        style={inputStyle}
-                      />
-                    </div>                    
-                    <div>
-                      <label style={labelStyle}>Veículo</label>
-                      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                        <select
-                          value={(form as any).vehicleId || ''}
-                          onChange={e => {
-                            const val = e.target.value
-                            setForm(f => {
-                              const newForm: any = { ...f, vehicleId: val }
-                              const vid = Number(val)
-                              const v = vehicles.find(x => x.id === vid)
-                              if (v) {
-                                if (!newForm.odometer && v.odometer != null) newForm.odometer = String(v.odometer)
-                                if (!newForm.nextOilChange && v.nextOilChange) newForm.nextOilChange = toDateInput(String(v.nextOilChange))
-                                if (!newForm.lastAlignment && v.lastAlignment) newForm.lastAlignment = toDateInput(String(v.lastAlignment))
-                                if (!newForm.odometerAtLastAlignment && v.odometerAtLastAlignment != null) newForm.odometerAtLastAlignment = String(v.odometerAtLastAlignment)
-                                if (!newForm.lastMaintenance && v.lastMaintenance) newForm.lastMaintenance = toDateInput(String(v.lastMaintenance))
-                              }
-                              return newForm
-                            })
-                          }}
-                          style={{ ...selectStyle, flex: 1 }}
-                        >
-                          <option value="">Selecione...</option>
-                          {vehicles.map(v => (
-                            <option key={v.id} value={v.id}>{v.model ?? v.plate ?? v.id}</option>
-                          ))}
-                        </select>
-
-                        {editingTrip?.completed && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const vid = Number((form as any).vehicleId)
-                              if (!vid) { addToast('Selecione um veículo primeiro', 'error'); return }
-                              const v = vehicles.find(x => x.id === vid)
-                              if (!v) { addToast('Veículo não encontrado', 'error'); return }
-                              openEditVehicle(v, true)
-                            }}
-                            style={{ ...(btnSmall as any), padding: '6px 8px' }}
-                          >Editar</button>
-                        )}
-                      </div>
-                    </div>
-                    <div>
-                      <label style={labelStyle}>Tipo *</label>
-                      <select value={form.serviceTypeId} onChange={e => setForm({ ...form, serviceTypeId: e.target.value })} style={selectStyle}>
-                        <option value="">Selecione...</option>
-                        {serviceTypes.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                      </select>
-                    </div>
-                    <div style={{ gridColumn: '1 / -1' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'space-between' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                          <label style={labelStyle}>Cidades & Clientes *</label>
-                        </div>
-                        <div>
-                          <button type="button" onClick={() => setShowCitiesClientsModal(true)} style={{ ...(btnSmallBlue as any), padding: '6px 8px' }}>Cidades/Clientes</button>
-                        </div>
-                      </div>
-
-                      <div style={{ marginTop: 8 }}>
-                        {((form as any).cities || []).length === 0 ? (
-                          <div style={{ color: PALETTE.textSecondary }}>Nenhuma cidade adicionada. Abra Cidades/Clientes para adicionar.</div>
-                        ) : (
-                          (form as any).cities.map((cityBlock: any, ci: number) => (
-                            <div key={ci} style={{ marginTop: 8, padding: 8, border: `1px dashed ${PALETTE.border}`, borderRadius: 6 }}>
-                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                <div style={{ fontWeight: 600 }}>
-                                  {cities.find((c: any) => String(c.id) === String(cityBlock.cityId))?.name || 'Cidade não selecionada'}
-                                </div>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                  <div style={{ color: PALETTE.textSecondary, fontSize: 12 }}>{(cityBlock.clients || []).length} cliente(s)</div>
-                                  {((form as any).cities || []).length > 1 ? (
-                                    <div style={{ display: 'flex', gap: 6 }}>
-                                      <button
-                                        type="button"
-                                        onClick={() => setForm(f => {
-                                          const cities = Array.isArray((f as any).cities) ? [...(f as any).cities] : []
-                                          if (ci <= 0) return f
-                                          const tmp = cities[ci - 1]
-                                          cities[ci - 1] = cities[ci]
-                                          cities[ci] = tmp
-                                          return { ...f, cities }
-                                        })}
-                                        style={{ ...(btnSmallBlue as any), padding: '6px 8px' }}
-                                        title="Mover para cima"
-                                      >▲</button>
-
-                                      <button
-                                        type="button"
-                                        onClick={() => setForm(f => {
-                                          const cities = Array.isArray((f as any).cities) ? [...(f as any).cities] : []
-                                          if (ci >= cities.length - 1) return f
-                                          const tmp = cities[ci + 1]
-                                          cities[ci + 1] = cities[ci]
-                                          cities[ci] = tmp
-                                          return { ...f, cities }
-                                        })}
-                                        style={{ ...(btnSmallBlue as any), padding: '6px 8px' }}
-                                        title="Mover para baixo"
-                                      >▼</button>
-
-                                      <button
-                                        type="button"
-                                        onClick={() => setForm(f => {
-                                          const cities = Array.isArray((f as any).cities) ? [...(f as any).cities] : []
-                                          cities.splice(ci, 1)
-                                          return { ...f, cities }
-                                        })}
-                                        style={{ ...(btnSmallRed as any), padding: '6px 8px' }}
-                                      >Remover</button>
-                                    </div>
-                                  ) : null}
-                                </div>
-                              </div>
-                            </div>
-                          ))
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                <div>
-                  <div>
-                    <label style={labelStyle}>Passageiros</label>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                      {workers.map(w => (
-                        <button key={w.id} type="button" onClick={() => toggleTraveler(w.id)} style={{
-                          fontSize: 12, padding: '3px 8px', borderRadius: 4, cursor: 'pointer', border: 'none',
-                          background: form.travelerIds.includes(w.id) ? PALETTE.primary : PALETTE.hoverBg,
-                          color: form.travelerIds.includes(w.id) ? '#fff' : PALETTE.textPrimary,
-                          fontWeight: form.travelerIds.includes(w.id) ? 600 : 400,
-                        }}>
-                          {w.name}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  <div style={{ marginTop: 8 }}>
-                    <label style={labelStyle}>Motorista</label>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                      {workers.filter(w => form.travelerIds.includes(w.id)).map(w => (
-                        <button key={w.id} type="button" onClick={() => toggleDriver(w.id)} style={{
-                          fontSize: 12, padding: '3px 8px', borderRadius: 4, cursor: 'pointer', border: 'none',
-                          background: (form.driverIds || []).includes(w.id) ? PALETTE.primary : PALETTE.hoverBg,
-                          color: (form.driverIds || []).includes(w.id) ? '#fff' : PALETTE.textPrimary,
-                          fontWeight: (form.driverIds || []).includes(w.id) ? 600 : 400,
-                        }}>
-                          {w.name}
-                        </button>
-                      ))}
-                      {form.travelerIds.length === 0 && <div style={{ color: PALETTE.textSecondary }}>Selecione passageiros primeiro.</div>}
-                    </div>
-                  </div>
-
-                  {!editingTrip?.completed && (
-                    <div style={{ marginTop: 12 }}>
-                      <label style={{ ...labelStyle, marginBottom: 8 }}>Alimentação (R$)</label>
-                      <div style={moneyWrapper}>
-                        <CurrencyInput
-                          value={form.mealExpense}
-                          onChange={v => setForm({ ...form, mealExpense: v })}
-                          inputStyle={inputStyle}
-                          onRawChange={() => setMealEdited(true)}
-                        />
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {editingTrip?.completed ? (
-                <div style={{ marginTop: 12, borderTop: `1px solid ${PALETTE.border}`, paddingTop: 10 }}>
-                  <label style={{ ...labelStyle, marginBottom: 8 }}>Despesas & Quilometragem</label>
-
-                  <div style={{ display: 'grid', gap: 12 }}>
-                    {/* Grupo: Despesas */}
-                    <div>
-                      <div style={{ display: 'grid', gap: 6 }}>
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
-                          <div>
-                            <label style={{ ...labelStyle, fontSize: 11 }}>Alimentação (R$)</label>
-                            <div style={moneyWrapper}>
-                              <CurrencyInput
-                                value={form.mealExpense}
-                                onChange={v => setForm({ ...form, mealExpense: v })}
-                                inputStyle={inputStyle}
-                                onRawChange={() => setMealEdited(true)}
-                              />
-                            </div>
-                          </div>
-                          <div>
-                            <label style={{ ...labelStyle, fontSize: 11 }}>Combustível (R$)</label>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                              <div style={{ flex: 1 }}>
-                                <CurrencyInput
-                                  value={form.fuelExpense}
-                                  onChange={v => setForm({ ...form, fuelExpense: v })}
-                                  inputStyle={inputStyle}
-                                  rightButton={num(form.fuelExpense) > 0 ? (
-                                    <button type="button" onClick={(e) => { e.stopPropagation(); setShowFuelNoteModal(true) }} style={{ ...(btnSmallBlue as any), padding: '6px 8px', fontSize: 12 }}>📝</button>
-                                  ) : undefined}
-                                />
-                              </div>
-                            </div>
-                          </div>
-                          <div>
-                            <label style={{ ...labelStyle, fontSize: 11 }}>Extra (R$)</label>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                              <div style={{ flex: 1 }}>
-                                <CurrencyInput
-                                  value={form.extraExpense}
-                                  onChange={v => setForm({ ...form, extraExpense: v })}
-                                  inputStyle={inputStyle}
-                                  rightButton={num(form.extraExpense) > 0 ? (
-                                    <button type="button" onClick={(e) => { e.stopPropagation(); setShowExtraNoteModal(true) }} style={{ ...(btnSmallBlue as any), padding: '6px 8px', fontSize: 12 }}>📝</button>
-                                  ) : undefined}
-                                />
-                              </div>
-                            </div>
-                          </div>
-                          <div>
-                            <label style={{ ...labelStyle, fontSize: 11 }}>Km Rodados</label>
-                            <CurrencyInput
-                              value={form.kmDriven}
-                              onChange={v => setForm({ ...form, kmDriven: v })}
-                              inputStyle={inputStyle}
-                              showPrefix={false}
-                            />
-                          </div>
-                        </div>
-
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
-                          <div>
-                            <label style={{ ...labelStyle, fontSize: 11 }}>Consumo Médio (km/l)</label>
-                            <CurrencyInput
-                              value={form.avgConsumption}
-                              onChange={v => setForm({ ...form, avgConsumption: v })}
-                              inputStyle={inputStyle}
-                              showPrefix={false}
-                            />
-                          </div>
-                          <div>
-                            <label style={{ ...labelStyle, fontSize: 11 }}>Autonomia Restante (Km)</label>
-                            <div style={moneyWrapper}>
-                              <CurrencyInput
-                                value={form.remainingAutonomy}
-                                onChange={v => setForm({ ...form, remainingAutonomy: v })}
-                                inputStyle={inputStyle}
-                                showPrefix={false}
-                              />
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                    <div style={{ marginTop: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-                      <label style={{ ...labelStyle, marginBottom: 0 }}>Cálculos</label>
-                    </div>
-                    <div />
-                  </div>
-
-                  <div style={{ marginTop: 8, display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
-                    <div>
-                      <label style={{ ...labelStyle, fontSize: 11 }}>Custo/km (R$)</label>
-                        <div style={moneyWrapper}>
-                        <CurrencyInput
-                          value={form.costPerKm}
-                          onChange={v => setForm({ ...form, costPerKm: v })}
-                          inputStyle={inputStyle}
-                        />
-                      </div>
-                    </div>
-                    <div>
-                      <label style={{ ...labelStyle, fontSize: 11 }}>Lucro/km (R$)</label>
-                      <div style={moneyWrapper}>
-                        <CurrencyInput
-                          value={form.profitPerKm}
-                          onChange={v => setForm({ ...form, profitPerKm: v })}
-                          inputStyle={inputStyle}
-                        />
-                      </div>
-                    </div>
-                    <div>
-                      <label style={{ ...labelStyle, fontSize: 11 }}>Total (R$)</label>
-                      <div style={moneyWrapper}>
-                        <CurrencyInput
-                          value={form.total}
-                          onChange={v => setForm({ ...form, total: v })}
-                          inputStyle={inputStyle}
-                        />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              ) : null}
-
-              <div style={{ marginTop: 12 }}>
-                <label style={labelStyle}>Observações</label>
-                <textarea value={form.note} onChange={e => setForm({ ...form, note: e.target.value })} rows={1} style={{ ...inputStyle, resize: 'vertical', minHeight: 100 }} />
-              </div>
-
-              {editingTrip && (
-                <div style={{ marginTop: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-                  <div style={{ display: 'flex', gap: 8 }}>
-                      <button type="button" onClick={async () => {
-                      if (!editingTrip) return
-                      if (!editingTrip.completed) {
-                        const dateOnly = toDateInput(editingTrip.date)
-                        const endIso = new Date(parseLocalDate(dateOnly)).toISOString()
-                        await handleMarkComplete(editingTrip)
-                        setEditingTrip(et => et ? { ...et, completed: true, endDate: endIso } : et)
-                        setForm(f => ({ ...f, endDate: endIso }))
-                      } else {
-                        await handleMarkIncomplete(editingTrip)
-                        setEditingTrip(et => et ? { ...et, completed: false, endDate: null } : et)
-                        setForm(f => ({ ...f, endDate: null }))
-                      }
-                    }}
-                      style={editingTrip.completed ? { ...(btnSmallBlue as any), padding: '8px 12px', fontSize: 14, background: '#2ecc71', color: '#fff' } : { ...(btnSmallBlue as any), padding: '8px 12px', fontSize: 14 }}>
-                      {!editingTrip.completed ? 'Marcar como completa' : 'Marcar como pendente'}
-                    </button>
-                    {editingTrip.completed && (
-                      <input
-                        type="date"
-                        value={form.endDate ? form.endDate.slice(0, 10) : ''}
-                        onChange={e => setForm(f => ({ ...f, endDate: e.target.value ? new Date(e.target.value).toISOString() : null }))}
-                        style={{ ...inputStyle, width: 160, alignSelf: 'center' }}
-                      />
-                    )}
-                    <button type="button" onClick={() => { setConfirmDelete(editingTrip); setShowTripModal(false) }} style={{ ...(btnSmallRed as any), padding: '8px 12px', fontSize: 14 }}>Excluir viagem</button>
-                  </div>
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    <button type="button" onClick={() => setShowTripModal(false)} style={btnCancel as any}>Cancelar</button>
-                    <button type="submit" style={btnPrimary as any}>{editingTrip ? 'Salvar' : 'Criar'}</button>
-                  </div>
-                </div>
-              )}
-              {!editingTrip && (
-                <div style={{ marginTop: 12, display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                  <button type="button" onClick={() => setShowTripModal(false)} style={btnCancel as any}>Cancelar</button>
-                  <button type="submit" style={btnPrimary as any}>{editingTrip ? 'Salvar' : 'Criar'}</button>
-                </div>
-              )}
-            </form>
-          </div>
-        </div>
-      )}
+      <TripModal
+        showTripModal={showTripModal}
+        setShowTripModal={setShowTripModal}
+        overlay={overlay}
+        modal={modal}
+        editingTrip={editingTrip}
+        handleSaveTrip={handleSaveTrip}
+        form={form}
+        setForm={setForm}
+        setShowCitiesClientsModal={setShowCitiesClientsModal}
+        vehicles={vehicles}
+        addToast={addToast}
+        openEditVehicle={openEditVehicle}
+        serviceTypes={serviceTypes}
+        cities={cities}
+        workers={workers}
+        toggleTraveler={toggleTraveler}
+        toggleDriver={toggleDriver}
+        CurrencyInput={CurrencyInput}
+        moneyWrapper={moneyWrapper}
+        btnSmallBlue={btnSmallBlue}
+        btnSmallRed={btnSmallRed}
+        btnSmall={btnSmall}
+        btnCancel={btnCancel}
+        btnPrimary={btnPrimary}
+        PALETTE={PALETTE}
+        toDateInput={toDateInput}
+        parseLocalDate={parseLocalDate}
+        handleMarkComplete={handleMarkComplete}
+        handleMarkIncomplete={handleMarkIncomplete}
+        setEditingTrip={setEditingTrip}
+        setConfirmDelete={setConfirmDelete}
+        setShowFuelNoteModal={setShowFuelNoteModal}
+        setShowExtraNoteModal={setShowExtraNoteModal}
+        setMealEdited={setMealEdited}
+        num={num}
+      />
 
       {showNotifications && notifPos && (
-        <div id="notifications-popover" style={{ position: 'absolute', top: notifPos.top, left: notifPos.left, width: 520, zIndex: 2000 }}>
-          <div style={{
-              background: 'linear-gradient(rgb(22, 20, 20), rgb(53, 102, 151))',
-              border: `1px solid ${PALETTE.border}`,
-              borderRadius: 12,
-              padding: 10,
-              boxShadow: '0 20px 60px rgba(2,6,23,0.18), 0 8px 24px rgba(2,6,23,0.12)',
-              transform: 'translateY(0px)',
-              transition: 'transform 180ms ease, box-shadow 180ms ease',
-              willChange: 'transform, box-shadow',
-              maxHeight: '48vh',
-              overflowY: 'auto'
-            }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h3 style={{ margin: 0, fontSize: 16 }}>Notificações</h3>
-              <button type="button" onClick={() => setShowNotifications(false)} style={btnCancel as any}>X</button>
-            </div>
-
-            {/* Próximas viagens */}
-            <div style={{ marginTop: 8 }}>
-              <div style={{ color: PALETTE.textSecondary, marginBottom: 8 }}>Próximas viagens</div>
-              {(() => {
-                const today = new Date()
-                today.setHours(0, 0, 0, 0)
-                const tomorrow = new Date()
-                tomorrow.setDate(tomorrow.getDate() + 1)
-                const tt = isoDate(tomorrow)
-                const todayIso = isoDate(today)
-                const items = trips.filter(tr => {
-                  const d = toDateInput(tr.date)
-                  return (d === todayIso || d === tt) && !tr.completed
-                })
-                if (items.length === 0) return <div style={{ color: PALETTE.textSecondary }}>Nenhuma viagem para hoje ou amanhã.</div>
-                return (
-                  <div style={{ display: 'grid', gap: 8 }}>
-                    {items.map(t => {
-                      const isTodayTrip = toDateInput(t.date) === todayIso
-                      const itemBg = isTodayTrip ? `${PALETTE.success}33` : PALETTE.cardBg
-                      const itemBorder = isTodayTrip ? `1px solid ${PALETTE.success}88` : `1px solid ${PALETTE.border}`
-                      return (
-                      <div
-                        key={t.id}
-                        onClick={() => {
-                          setShowNotifications(false)
-                          if (canEdit) {
-                            openEditTrip(t)
-                          } else {
-                            const d = parseLocalDate(toDateInput(t.date))
-                            setTripsView('calendar')
-                            setCalMonth(new Date(d.getFullYear(), d.getMonth(), 1))
-                            setSelectedDay(d)
-                            setPanelOpen(true)
-                          }
-                        }}
-                        onMouseEnter={() => setHoveredNotif(`trip-${t.id}`)}
-                        onMouseLeave={() => setHoveredNotif(null)}
-                        role="button"
-                        tabIndex={0}
-                        style={{
-                          padding: 6,
-                          borderRadius: 6,
-                          background: itemBg,
-                          border: itemBorder,
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: 8,
-                          minHeight: 44,
-                          cursor: 'pointer',
-                          transition: 'transform 0.2s ease, filter 0.2s ease, box-shadow 0.2s ease',
-                          transform: hoveredNotif === `trip-${t.id}` ? 'translateY(-1px)' : 'translateY(0px)',
-                          filter: hoveredNotif === `trip-${t.id}` ? 'brightness(1.12)' : undefined,
-                          boxShadow: hoveredNotif === `trip-${t.id}` ? '0 2px 8px rgba(0,0,0,0.35)' : 'none',
-                        }}
-                      >
-                        {(() => {
-                          const d = parseLocalDate(toDateInput(t.date))
-                          const dow = ['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'][d.getDay()]
-                          const equipe = Array.from(new Set([...(t.drivers || []).map((w: any) => w.name), ...(t.travelers || []).map((w: any) => w.name)])).join(', ') || '—'
-                          return (
-                            <>
-                              <div style={{ flex: 1, minWidth: 0 }}>
-                                <div style={{ fontWeight: 700, fontSize: 13, lineHeight: 1 }}>{t.serviceType?.name ?? 'Viagem'}</div>
-                                <div style={{ fontSize: 12, color: PALETTE.textSecondary, lineHeight: 1 }}>{dow} {d.toLocaleDateString('pt-BR')}{t.startTime ? ` - ${t.startTime}` : ''} — {t.city?.name ?? '—'}</div>
-                              </div>
-                              <div style={{ width: 120, textAlign: 'right', fontSize: 12, color: PALETTE.textSecondary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{equipe}</div>
-                            </>
-                          )
-                        })()}
-                      </div>
-                    )
-                    })}
-                  </div>
-                )
-              })()}
-
-              {/* Seção: Trocas de óleo */}
-              <div style={{ marginTop: 12 }}>
-                <div style={{ color: PALETTE.textSecondary, marginBottom: 8 }}>Trocas de óleo</div>
-                {(() => {
-                  const today = new Date()
-                  today.setHours(0, 0, 0, 0)
-                  const msPerDay = 24 * 60 * 60 * 1000
-                  const oilItems = (vehicles || []).filter(v => v.nextOilChange).map(v => {
-                    const iso = toDateInput(String(v.nextOilChange))
-                    const d = parseLocalDate(iso)
-                    const diff = Math.ceil((d.getTime() - today.getTime()) / msPerDay)
-                    return { v, d, diff }
-                  }).filter(x => x.diff >= 0 && x.diff <= 30)
-
-                  if (oilItems.length === 0) return <div style={{ color: PALETTE.textSecondary }}>Nenhuma troca de óleo próxima.</div>
-
-                  return (
-                    <div style={{ display: 'grid', gap: 8 }}>
-                      {oilItems.map(({ v, d, diff }) => {
-                        const dow = ['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'][d.getDay()]
-                        const rightInfo = v.model || v.notes || '—'
-                        const daysText = diff === 0 ? 'Hoje' : diff === 1 ? '1 dia' : `${diff} dias`
-                        const isDueToday = diff === 0
-                        const itemBg = isDueToday ? `${PALETTE.success}33` : PALETTE.cardBg
-                        const itemBorder = isDueToday ? `1px solid ${PALETTE.success}88` : `1px solid ${PALETTE.border}`
-                        return (
-                          <div
-                            key={v.id}
-                            onClick={() => {
-                              setShowNotifications(false)
-                              if (canEdit) openEditVehicle(v)
-                            }}
-                            onMouseEnter={() => setHoveredNotif(`vehicle-oil-${v.id}`)}
-                            onMouseLeave={() => setHoveredNotif(null)}
-                            role="button"
-                            tabIndex={0}
-                            style={{
-                              padding: 6,
-                              borderRadius: 6,
-                              background: itemBg,
-                              border: itemBorder,
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: 8,
-                              minHeight: 44,
-                              cursor: 'pointer',
-                              transition: 'transform 0.2s ease, filter 0.2s ease, box-shadow 0.2s ease',
-                              transform: hoveredNotif === `vehicle-oil-${v.id}` ? 'translateY(-1px)' : 'translateY(0px)',
-                              filter: hoveredNotif === `vehicle-oil-${v.id}` ? 'brightness(1.12)' : undefined,
-                              boxShadow: hoveredNotif === `vehicle-oil-${v.id}` ? '0 2px 8px rgba(0,0,0,0.35)' : 'none',
-                            }}
-                          >
-                            <div style={{ flex: 1, minWidth: 0 }}>
-                              <div style={{ fontWeight: 700, fontSize: 13, lineHeight: 1 }}>{(v.model || v.plate) ? `${v.model ?? '—'} - ${v.plate ?? '—'}` : 'Veículo'}</div>
-                              <div style={{ fontSize: 12, color: PALETTE.textSecondary, lineHeight: 1 }}>{dow} {d.toLocaleDateString('pt-BR')} - Troca de óleo — {daysText}</div>
-                            </div>
-                            <div style={{ display: 'flex', gap: 8, marginLeft: 8 }} />
-                          </div>
-                        )
-                      })}
-                    </div>
-                  )
-                })()}
-              </div>
-              
-              {/* Seção: Manutenção */}
-              <div style={{ marginTop: 12 }}>
-                <div style={{ color: PALETTE.textSecondary, marginBottom: 8 }}>Manutenção</div>
-                {(() => {
-                  const today = new Date()
-                  today.setHours(0, 0, 0, 0)
-                  const msPerDay = 24 * 60 * 60 * 1000
-                  const maintItems = (vehicles || []).filter(v => v.lastMaintenance).map(v => {
-                    const iso = toDateInput(String(v.lastMaintenance))
-                    const d0 = parseLocalDate(iso)
-                    const d = new Date(d0.getFullYear(), d0.getMonth(), d0.getDate())
-                    d.setDate(d.getDate() + (defaultMaintenanceInterval ?? 60))
-                    const diff = Math.ceil((d.getTime() - today.getTime()) / msPerDay)
-                    return { v, d, diff }
-                  }).filter(x => x.diff >= 0 && x.diff <= 30)
-
-                  if (maintItems.length === 0) return <div style={{ color: PALETTE.textSecondary }}>Nenhuma manutenção próxima.</div>
-
-                  return (
-                    <div style={{ display: 'grid', gap: 8 }}>
-                      {maintItems.map(({ v, d, diff }) => {
-                        const dow = ['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'][d.getDay()]
-                        const daysText = diff === 0 ? 'Hoje' : diff === 1 ? '1 dia' : `${diff} dias`
-                        const isDueToday = diff === 0
-                        const itemBg = isDueToday ? `${PALETTE.success}33` : PALETTE.cardBg
-                        const itemBorder = isDueToday ? `1px solid ${PALETTE.success}88` : `1px solid ${PALETTE.border}`
-                        return (
-                          <div
-                            key={v.id}
-                            onClick={() => {
-                              setShowNotifications(false)
-                              if (canEdit) openEditVehicle(v)
-                            }}
-                            onMouseEnter={() => setHoveredNotif(`vehicle-maint-${v.id}`)}
-                            onMouseLeave={() => setHoveredNotif(null)}
-                            role="button"
-                            tabIndex={0}
-                            style={{
-                              padding: 6,
-                              borderRadius: 6,
-                              background: itemBg,
-                              border: itemBorder,
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: 8,
-                              minHeight: 44,
-                              cursor: 'pointer',
-                              transition: 'transform 0.2s ease, filter 0.2s ease, box-shadow 0.2s ease',
-                              transform: hoveredNotif === `vehicle-maint-${v.id}` ? 'translateY(-1px)' : 'translateY(0px)',
-                              filter: hoveredNotif === `vehicle-maint-${v.id}` ? 'brightness(1.12)' : undefined,
-                              boxShadow: hoveredNotif === `vehicle-maint-${v.id}` ? '0 2px 8px rgba(0,0,0,0.35)' : 'none',
-                            }}
-                          >
-                            <div style={{ flex: 1, minWidth: 0 }}>
-                              <div style={{ fontWeight: 700, fontSize: 13, lineHeight: 1 }}>{(v.model || v.plate) ? `${v.model ?? '—'} - ${v.plate ?? '—'}` : 'Veículo'}</div>
-                              <div style={{ fontSize: 12, color: PALETTE.textSecondary, lineHeight: 1 }}>{dow} {d.toLocaleDateString('pt-BR')} - Manutenção — {daysText}</div>
-                            </div>
-                            <div style={{ display: 'flex', gap: 8, marginLeft: 8 }} />
-                          </div>
-                        )
-                      })}
-                    </div>
-                  )
-                })()}
-              </div>
-
-              {/* Seção: Alinhamentos */}
-              <div style={{ marginTop: 12 }}>
-                <div style={{ color: PALETTE.textSecondary, marginBottom: 8 }}>Alinhamentos</div>
-                {(() => {
-                  const today = new Date()
-                  today.setHours(0, 0, 0, 0)
-                  const msPerDay = 24 * 60 * 60 * 1000
-                  const alignItems = (vehicles || []).filter(v => v.lastAlignment).map(v => {
-                    const iso = toDateInput(String(v.lastAlignment))
-                    const d0 = parseLocalDate(iso)
-                    const d = new Date(d0.getFullYear(), d0.getMonth(), d0.getDate())
-                    d.setDate(d.getDate() + (defaultAlignmentInterval ?? 60))
-                    const diff = Math.floor((d.getTime() - today.getTime()) / msPerDay)
-                    return { v, d, diff }
-                  }).filter(x => x.diff >= 0 && x.diff <= 30)
-
-                  if (alignItems.length === 0) return <div style={{ color: PALETTE.textSecondary }}>Nenhum alinhamento próximo.</div>
-
-                  return (
-                    <div style={{ display: 'grid', gap: 8 }}>
-                      {alignItems.map(({ v, d, diff }) => {
-                        const dow = ['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'][d.getDay()]
-                        const daysText = diff === 0 ? 'Hoje' : diff === 1 ? '1 dia' : `${diff} dias`
-                        const isDueToday = diff === 0
-                        const itemBg = isDueToday ? `${PALETTE.success}33` : PALETTE.cardBg
-                        const itemBorder = isDueToday ? `1px solid ${PALETTE.success}88` : `1px solid ${PALETTE.border}`
-                        return (
-                          <div
-                            key={v.id}
-                            onClick={() => {
-                                  setShowNotifications(false)
-                                  if (canEdit) openEditVehicle(v)
-                                }}
-                                onMouseEnter={() => setHoveredNotif(`vehicle-align-${v.id}`)}
-                                onMouseLeave={() => setHoveredNotif(null)}
-                            role="button"
-                            tabIndex={0}
-                            style={{
-                              padding: 6,
-                              borderRadius: 6,
-                              background: itemBg,
-                              border: itemBorder,
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: 8,
-                              minHeight: 44,
-                              cursor: 'pointer',
-                              transition: 'transform 0.2s ease, filter 0.2s ease, box-shadow 0.2s ease',
-                              transform: hoveredNotif === `vehicle-align-${v.id}` ? 'translateY(-1px)' : 'translateY(0px)',
-                              filter: hoveredNotif === `vehicle-align-${v.id}` ? 'brightness(1.12)' : undefined,
-                              boxShadow: hoveredNotif === `vehicle-align-${v.id}` ? '0 2px 8px rgba(0,0,0,0.35)' : 'none',
-                            }}
-                          >
-                            <div style={{ flex: 1, minWidth: 0 }}>
-                              <div style={{ fontWeight: 700, fontSize: 13, lineHeight: 1 }}>{(v.model || v.plate) ? `${v.model ?? '—'} - ${v.plate ?? '—'}` : 'Veículo'}</div>
-                              <div style={{ fontSize: 12, color: PALETTE.textSecondary, lineHeight: 1 }}>{dow} {d.toLocaleDateString('pt-BR')} - Alinhamento — {daysText}</div>
-                            </div>
-                            <div style={{ display: 'flex', gap: 8, marginLeft: 8 }} />
-                          </div>
-                        )
-                      })}
-                    </div>
-                  )
-                })()}
-              </div>
-            </div>
-          </div>
-        </div>
+        <NotificationsPopover
+          showNotifications={showNotifications}
+          notifPos={notifPos}
+          setShowNotifications={setShowNotifications}
+          btnCancel={btnCancel}
+          PALETTE={PALETTE}
+          trips={trips}
+          isoDate={isoDate}
+          toDateInput={toDateInput}
+          parseLocalDate={parseLocalDate}
+          canEdit={canEdit}
+          openEditTrip={openEditTrip}
+          setTripsView={setTripsView}
+          setCalMonth={setCalMonth}
+          setSelectedDay={setSelectedDay}
+          setPanelOpen={setPanelOpen}
+          hoveredNotif={hoveredNotif}
+          setHoveredNotif={setHoveredNotif}
+          vehicles={vehicles}
+          defaultMaintenanceInterval={defaultMaintenanceInterval}
+          defaultAlignmentInterval={defaultAlignmentInterval}
+          openEditVehicle={openEditVehicle}
+        />
       )}
 
-        {/* Popover de atrasos */}
-        {showOverdue && overduePos && (
-          <div id="overdue-popover" style={{ position: 'absolute', top: overduePos.top, left: overduePos.left, width: 520, zIndex: 2000 }}>
-            <div style={{
-                background: 'linear-gradient(rgb(22, 20, 20), rgb(53, 102, 151))',
-                border: `1px solid ${PALETTE.border}`,
-                borderRadius: 12,
-                padding: 10,
-                boxShadow: '0 20px 60px rgba(2,6,23,0.18), 0 8px 24px rgba(2,6,23,0.12)',
-                transform: 'translateY(0px)',
-                transition: 'transform 180ms ease, box-shadow 180ms ease',
-                willChange: 'transform, box-shadow',
-                maxHeight: '48vh',
-                overflowY: 'auto'
-              }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <h3 style={{ margin: 0, fontSize: 16 }}>Atrasos</h3>
-                <button type="button" onClick={() => setShowOverdue(false)} style={btnCancel as any}>X</button>
-              </div>
+      <OverduePopover
+        showOverdue={showOverdue}
+        overduePos={overduePos}
+        setShowOverdue={setShowOverdue}
+        btnCancel={btnCancel}
+        PALETTE={PALETTE}
+        isoDate={isoDate}
+        toDateInput={toDateInput}
+        parseLocalDate={parseLocalDate}
+        trips={trips}
+        vehicles={vehicles}
+        defaultMaintenanceInterval={defaultMaintenanceInterval}
+        defaultAlignmentInterval={defaultAlignmentInterval}
+        canEdit={canEdit}
+        openEditTrip={openEditTrip}
+        setTripsView={setTripsView}
+        setCalMonth={setCalMonth}
+        setSelectedDay={setSelectedDay}
+        setPanelOpen={setPanelOpen}
+        hoveredNotif={hoveredNotif}
+        setHoveredNotif={setHoveredNotif}
+        openEditVehicle={openEditVehicle}
+      />
 
-              <div style={{ color: PALETTE.textSecondary, marginBottom: 8 }}>Viagens em atraso</div>
-              <div style={{ marginTop: 8 }}>
-                {(() => {
-                  const today = new Date()
-                  today.setHours(0, 0, 0, 0)
-                  const todayIso = isoDate(today)
-                  const items = (trips || []).filter(tr => {
-                    if (tr.completed) return false
-                    const iso = toDateInput(tr.date)
-                    const d = parseLocalDate(iso)
-                    return d.getTime() < today.getTime()
-                  })
-                  if (items.length === 0) {
-                    const today2 = new Date()
-                    today2.setHours(0, 0, 0, 0)
-                    const msPerDay2 = 24 * 60 * 60 * 1000
-                    const veh = vehicles || []
-                    const oilOverdue = (veh || []).filter(v => v.nextOilChange).map(v => {
-                      const iso = toDateInput(String(v.nextOilChange))
-                      const d = parseLocalDate(iso)
-                      const diff = Math.ceil((d.getTime() - today2.getTime()) / msPerDay2)
-                      return { v, d, diff }
-                    }).filter(x => x.diff < 0)
-
-                    const maintOverdue = (veh || []).filter(v => v.lastMaintenance).map(v => {
-                      const iso = toDateInput(String(v.lastMaintenance))
-                      const d0 = parseLocalDate(iso)
-                      const d = new Date(d0.getFullYear(), d0.getMonth(), d0.getDate())
-                      d.setDate(d.getDate() + (defaultMaintenanceInterval ?? 60))
-                      const diff = Math.ceil((d.getTime() - today2.getTime()) / msPerDay2)
-                      return { v, d, diff }
-                    }).filter(x => x.diff < 0)
-
-                    const alignOverdue = (veh || []).filter(v => v.lastAlignment).map(v => {
-                      const iso = toDateInput(String(v.lastAlignment))
-                      const d0 = parseLocalDate(iso)
-                      const d = new Date(d0.getFullYear(), d0.getMonth(), d0.getDate())
-                      d.setDate(d.getDate() + (defaultAlignmentInterval ?? 60))
-                      const diff = Math.floor((d.getTime() - today2.getTime()) / msPerDay2)
-                      return { v, d, diff }
-                    }).filter(x => x.diff < 0)
-
-                    if (oilOverdue.length === 0 && maintOverdue.length === 0 && alignOverdue.length === 0) {
-                      return <div style={{ color: PALETTE.textSecondary }}>Nenhuma viagem atrasada.</div>
-                    }
-                  }
-
-                  return (
-                    <div style={{ display: 'grid', gap: 8 }}>
-                      {items.map(t => {
-                        const d = parseLocalDate(toDateInput(t.date))
-                        const dow = ['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'][d.getDay()]
-                        const equipe = Array.from(new Set([...(t.drivers || []).map((w: any) => w.name), ...(t.travelers || []).map((w: any) => w.name)])).join(', ') || '—'
-                        const itemBg = `${PALETTE.error}33`
-                        const itemBorder = `1px solid ${PALETTE.error}88`
-                        return (
-                          <div
-                            key={t.id}
-                            onClick={() => {
-                              setShowOverdue(false)
-                              if (canEdit) {
-                                openEditTrip(t)
-                              } else {
-                                setTripsView('calendar')
-                                setCalMonth(new Date(d.getFullYear(), d.getMonth(), 1))
-                                setSelectedDay(d)
-                                setPanelOpen(true)
-                              }
-                            }}
-                            onMouseEnter={() => setHoveredNotif(`trip-${t.id}`)}
-                            onMouseLeave={() => setHoveredNotif(null)}
-                            role="button"
-                            tabIndex={0}
-                            style={{
-                              padding: 6,
-                              borderRadius: 6,
-                              background: itemBg,
-                              border: itemBorder,
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: 8,
-                              minHeight: 44,
-                              cursor: 'pointer',
-                              transition: 'transform 0.2s ease, filter 0.2s ease, box-shadow 0.2s ease',
-                              transform: hoveredNotif === `trip-${t.id}` ? 'translateY(-1px)' : 'translateY(0px)',
-                              filter: hoveredNotif === `trip-${t.id}` ? 'brightness(1.12)' : undefined,
-                              boxShadow: hoveredNotif === `trip-${t.id}` ? '0 2px 8px rgba(0,0,0,0.35)' : 'none',
-                            }}
-                          >
-                            <div style={{ flex: 1, minWidth: 0 }}>
-                              <div style={{ fontWeight: 700, fontSize: 13, lineHeight: 1 }}>{t.serviceType?.name ?? 'Viagem'}</div>
-                              <div style={{ fontSize: 12, color: PALETTE.textSecondary, lineHeight: 1 }}>{dow} {d.toLocaleDateString('pt-BR')}{t.startTime ? ` - ${t.startTime}` : ''} — {t.city?.name ?? '—'}</div>
-                            </div>
-                            <div style={{ width: 120, textAlign: 'right', fontSize: 12, color: PALETTE.textSecondary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{equipe}</div>
-                          </div>
-                        )
-                      })}
-
-                      {/* Vehicles overdue sections */}
-                      {(() => {
-                        const today = new Date()
-                        today.setHours(0, 0, 0, 0)
-                        const msPerDay = 24 * 60 * 60 * 1000
-                        const veh = vehicles || []
-
-                        const oilItems = (veh || []).filter(v => v.nextOilChange).map(v => {
-                          const iso = toDateInput(String(v.nextOilChange))
-                          const d = parseLocalDate(iso)
-                          const diff = Math.ceil((d.getTime() - today.getTime()) / msPerDay)
-                          return { v, d, diff }
-                        }).filter(x => x.diff < 0)
-
-                        const maintItems = (veh || []).filter(v => v.lastMaintenance).map(v => {
-                          const iso = toDateInput(String(v.lastMaintenance))
-                          const d0 = parseLocalDate(iso)
-                          const d = new Date(d0.getFullYear(), d0.getMonth(), d0.getDate())
-                          d.setDate(d.getDate() + (defaultMaintenanceInterval ?? 60))
-                          const diff = Math.ceil((d.getTime() - today.getTime()) / msPerDay)
-                          return { v, d, diff }
-                        }).filter(x => x.diff < 0)
-
-                        const alignItems = (veh || []).filter(v => v.lastAlignment).map(v => {
-                          const iso = toDateInput(String(v.lastAlignment))
-                          const d0 = parseLocalDate(iso)
-                          const d = new Date(d0.getFullYear(), d0.getMonth(), d0.getDate())
-                          d.setDate(d.getDate() + (defaultAlignmentInterval ?? 60))
-                          const diff = Math.floor((d.getTime() - today.getTime()) / msPerDay)
-                          return { v, d, diff }
-                        }).filter(x => x.diff < 0)
-
-                        return (
-                          <>
-                            {oilItems.length > 0 && (
-                              <div style={{ marginTop: 12 }}>
-                                <div style={{ color: PALETTE.textSecondary, marginBottom: 8 }}>Trocas de óleo em atraso</div>
-                                <div style={{ display: 'grid', gap: 8 }}>
-                                  {oilItems.map(({ v, d, diff }) => {
-                                    const dow = ['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'][d.getDay()]
-                                    const daysText = Math.abs(diff) === 0 ? 'Hoje' : Math.abs(diff) === 1 ? '1 dia atrasado' : `${Math.abs(diff)} dias atrasados`
-                                    return (
-                                      <div
-                                        key={`oil-${v.id}`}
-                                        onClick={() => { setShowOverdue(false); if (canEdit) openEditVehicle(v) }}
-                                        onMouseEnter={() => setHoveredNotif(`vehicle-oil-${v.id}`)}
-                                        onMouseLeave={() => setHoveredNotif(null)}
-                                        role="button"
-                                        tabIndex={0}
-                                        style={{
-                                          padding: 6,
-                                          borderRadius: 6,
-                                          background: `${PALETTE.error}33`,
-                                          border: `1px solid ${PALETTE.error}88`,
-                                          display: 'flex',
-                                          alignItems: 'center',
-                                          gap: 8,
-                                          minHeight: 44,
-                                          cursor: 'pointer',
-                                          transition: 'transform 0.2s ease, filter 0.2s ease, box-shadow 0.2s ease',
-                                          transform: hoveredNotif === `vehicle-oil-${v.id}` ? 'translateY(-1px)' : 'translateY(0px)',
-                                          filter: hoveredNotif === `vehicle-oil-${v.id}` ? 'brightness(1.12)' : undefined,
-                                          boxShadow: hoveredNotif === `vehicle-oil-${v.id}` ? '0 2px 8px rgba(0,0,0,0.35)' : 'none',
-                                        }}
-                                      >
-                                        <div style={{ flex: 1, minWidth: 0 }}>
-                                          <div style={{ fontWeight: 700, fontSize: 13, lineHeight: 1 }}>{(v.model || v.plate) ? `${v.model ?? '—'} - ${v.plate ?? '—'}` : 'Veículo'}</div>
-                                          <div style={{ fontSize: 12, color: PALETTE.textSecondary, lineHeight: 1 }}>{dow} {d.toLocaleDateString('pt-BR')} - Troca de óleo — {daysText}</div>
-                                        </div>
-                                      </div>
-                                    )
-                                  })}
-                                </div>
-                              </div>
-                            )}
-
-                            {maintItems.length > 0 && (
-                              <div style={{ marginTop: 12 }}>
-                                <div style={{ color: PALETTE.textSecondary, marginBottom: 8 }}>Manutenção em atraso</div>
-                                <div style={{ display: 'grid', gap: 8 }}>
-                                  {maintItems.map(({ v, d, diff }) => {
-                                    const dow = ['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'][d.getDay()]
-                                    const daysText = Math.abs(diff) === 0 ? 'Hoje' : Math.abs(diff) === 1 ? '1 dia atrasado' : `${Math.abs(diff)} dias atrasados`
-                                    return (
-                                      <div
-                                        key={`maint-${v.id}`}
-                                        onClick={() => { setShowOverdue(false); if (canEdit) openEditVehicle(v) }}
-                                        onMouseEnter={() => setHoveredNotif(`vehicle-maint-${v.id}`)}
-                                        onMouseLeave={() => setHoveredNotif(null)}
-                                        role="button"
-                                        tabIndex={0}
-                                        style={{
-                                          padding: 6,
-                                          borderRadius: 6,
-                                          background: `${PALETTE.error}33`,
-                                          border: `1px solid ${PALETTE.error}88`,
-                                          display: 'flex',
-                                          alignItems: 'center',
-                                          gap: 8,
-                                          minHeight: 44,
-                                          cursor: 'pointer',
-                                          transition: 'transform 0.2s ease, filter 0.2s ease, box-shadow 0.2s ease',
-                                          transform: hoveredNotif === `vehicle-maint-${v.id}` ? 'translateY(-1px)' : 'translateY(0px)',
-                                          filter: hoveredNotif === `vehicle-maint-${v.id}` ? 'brightness(1.12)' : undefined,
-                                          boxShadow: hoveredNotif === `vehicle-maint-${v.id}` ? '0 2px 8px rgba(0,0,0,0.35)' : 'none',
-                                        }}
-                                      >
-                                        <div style={{ flex: 1, minWidth: 0 }}>
-                                          <div style={{ fontWeight: 700, fontSize: 13, lineHeight: 1 }}>{(v.model || v.plate) ? `${v.model ?? '—'} - ${v.plate ?? '—'}` : 'Veículo'}</div>
-                                          <div style={{ fontSize: 12, color: PALETTE.textSecondary, lineHeight: 1 }}>{dow} {d.toLocaleDateString('pt-BR')} - Manutenção — {daysText}</div>
-                                        </div>
-                                      </div>
-                                    )
-                                  })}
-                                </div>
-                              </div>
-                            )}
-
-                            {alignItems.length > 0 && (
-                              <div style={{ marginTop: 12 }}>
-                                <div style={{ color: PALETTE.textSecondary, marginBottom: 8 }}>Alinhamentos em atraso</div>
-                                <div style={{ display: 'grid', gap: 8 }}>
-                                  {alignItems.map(({ v, d, diff }) => {
-                                    const dow = ['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'][d.getDay()]
-                                    const daysText = Math.abs(diff) === 0 ? 'Hoje' : Math.abs(diff) === 1 ? '1 dia atrasado' : `${Math.abs(diff)} dias atrasados`
-                                    return (
-                                      <div
-                                        key={`align-${v.id}`}
-                                        onClick={() => { setShowOverdue(false); if (canEdit) openEditVehicle(v) }}
-                                        onMouseEnter={() => setHoveredNotif(`vehicle-align-${v.id}`)}
-                                        onMouseLeave={() => setHoveredNotif(null)}
-                                        role="button"
-                                        tabIndex={0}
-                                        style={{
-                                          padding: 6,
-                                          borderRadius: 6,
-                                          background: `${PALETTE.error}33`,
-                                          border: `1px solid ${PALETTE.error}88`,
-                                          display: 'flex',
-                                          alignItems: 'center',
-                                          gap: 8,
-                                          minHeight: 44,
-                                          cursor: 'pointer',
-                                          transition: 'transform 0.2s ease, filter 0.2s ease, box-shadow 0.2s ease',
-                                          transform: hoveredNotif === `vehicle-align-${v.id}` ? 'translateY(-1px)' : 'translateY(0px)',
-                                          filter: hoveredNotif === `vehicle-align-${v.id}` ? 'brightness(1.12)' : undefined,
-                                          boxShadow: hoveredNotif === `vehicle-align-${v.id}` ? '0 2px 8px rgba(0,0,0,0.35)' : 'none',
-                                        }}
-                                      >
-                                        <div style={{ flex: 1, minWidth: 0 }}>
-                                          <div style={{ fontWeight: 700, fontSize: 13, lineHeight: 1 }}>{(v.model || v.plate) ? `${v.model ?? '—'} - ${v.plate ?? '—'}` : 'Veículo'}</div>
-                                          <div style={{ fontSize: 12, color: PALETTE.textSecondary, lineHeight: 1 }}>{dow} {d.toLocaleDateString('pt-BR')} - Alinhamento — {daysText}</div>
-                                        </div>
-                                      </div>
-                                    )
-                                  })}
-                                </div>
-                              </div>
-                            )}
-                          </>
-                        )
-                      })()}
-                    </div>
-                  )
-                })()}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {pendingHolidayConfirm && (
+      {pendingHolidayConfirm && (
         <div style={overlay} onClick={() => { setPendingHolidayConfirm(null); pendingPayloadRef.current = null; pendingEditingRef.current = null }}>
           <div style={modal} onClick={e => e.stopPropagation()}>
             <h2 style={{ margin: 0, marginBottom: 8 }}>Confirmar viagem para feriado{pendingHolidayConfirm.name ? ` — ${pendingHolidayConfirm.name}` : ''}?</h2>
@@ -3303,57 +2339,57 @@ export default function Trips() {
         </div>
       )}
 
-            {showExpenseModal && (
-              <div style={overlay} onClick={() => setShowExpenseModal(false)}>
-                <div style={smallModal} onClick={e => e.stopPropagation()}>
-                  <h3 style={{ marginTop: 0 }}>{editingExpense ? 'Editar Despesa' : 'Nova Despesa'}</h3>
-                  <form onSubmit={handleSaveExpense}>
-                    <div style={{ display: 'grid', gap: 8 }}>
-                      <div>
-                        <label style={labelStyle}>Data *</label>
-                        <input required type="date" value={expenseForm.date} onChange={e => setExpenseForm({ ...expenseForm, date: e.target.value })} style={inputStyle} />
-                      </div>
-                      <div>
-                        <label style={labelStyle}>Categoria</label>
-                        <select value={expenseForm.categoryId} onChange={e => setExpenseForm({ ...expenseForm, categoryId: e.target.value })} style={selectStyle}>
-                          <option value="">Selecione</option>
-                          {expenseCategories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                        </select>
-                      </div>
-                      <div>
-                        <label style={labelStyle}>Valor (R$)</label>
-                        <div style={moneyWrapper}>
-                          <CurrencyInput
-                            value={expenseForm.amount}
-                            onChange={v => setExpenseForm({ ...expenseForm, amount: v })}
-                            inputStyle={inputStyle}
-                          />
-                        </div>
-                      </div>
-                      {/* Fornecedor removed */}
-                      <div>
-                        <label style={labelStyle}>Trabalhador responsável</label>
-                        <select required value={expenseForm.workerId} onChange={e => setExpenseForm({ ...expenseForm, workerId: e.target.value })} style={selectStyle}>
-                          <option value="">Selecione</option>
-                          {workers.map(w => (
-                            <option key={w.id} value={w.id}>{w.name}</option>
-                          ))}
-                        </select>
-                      </div>
-                      {/* tags removed */}
-                      <div>
-                        <label style={labelStyle}>Notas</label>
-                        <textarea value={expenseForm.notes} onChange={e => setExpenseForm({ ...expenseForm, notes: e.target.value })} rows={2} style={{ ...inputStyle, resize: 'vertical' }} />
-                      </div>
-                    </div>
-                    <div style={{ marginTop: 14, display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                      <button type="button" onClick={() => setShowExpenseModal(false)} style={btnCancel as any}>Cancelar</button>
-                      <button type="submit" style={btnPrimary as any}>{editingExpense ? 'Salvar' : 'Criar'}</button>
-                    </div>
-                  </form>
+      {showExpenseModal && (
+        <div style={overlay} onClick={() => setShowExpenseModal(false)}>
+          <div style={smallModal} onClick={e => e.stopPropagation()}>
+            <h3 style={{ marginTop: 0 }}>{editingExpense ? 'Editar Despesa' : 'Nova Despesa'}</h3>
+            <form onSubmit={handleSaveExpense}>
+              <div style={{ display: 'grid', gap: 8 }}>
+                <div>
+                  <label style={labelStyle}>Data *</label>
+                  <input required type="date" value={expenseForm.date} onChange={e => setExpenseForm({ ...expenseForm, date: e.target.value })} style={inputStyle} />
+                </div>
+                <div>
+                  <label style={labelStyle}>Categoria</label>
+                  <select value={expenseForm.categoryId} onChange={e => setExpenseForm({ ...expenseForm, categoryId: e.target.value })} style={selectStyle}>
+                    <option value="">Selecione</option>
+                    {expenseCategories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label style={labelStyle}>Valor (R$)</label>
+                  <div style={moneyWrapper}>
+                    <CurrencyInput
+                      value={expenseForm.amount}
+                      onChange={v => setExpenseForm({ ...expenseForm, amount: v })}
+                      inputStyle={inputStyle}
+                    />
+                  </div>
+                </div>
+                {/* Fornecedor removed */}
+                <div>
+                  <label style={labelStyle}>Trabalhador responsável</label>
+                  <select required value={expenseForm.workerId} onChange={e => setExpenseForm({ ...expenseForm, workerId: e.target.value })} style={selectStyle}>
+                    <option value="">Selecione</option>
+                    {workers.map(w => (
+                      <option key={w.id} value={w.id}>{w.name}</option>
+                    ))}
+                  </select>
+                </div>
+                {/* tags removed */}
+                <div>
+                  <label style={labelStyle}>Notas</label>
+                  <textarea value={expenseForm.notes} onChange={e => setExpenseForm({ ...expenseForm, notes: e.target.value })} rows={2} style={{ ...inputStyle, resize: 'vertical' }} />
                 </div>
               </div>
-            )}
+              <div style={{ marginTop: 14, display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                <button type="button" onClick={() => setShowExpenseModal(false)} style={btnCancel as any}>Cancelar</button>
+                <button type="submit" style={btnPrimary as any}>{editingExpense ? 'Salvar' : 'Criar'}</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {showCityModal && (
         <div style={overlay} onClick={() => setShowCityModal(false)}>
