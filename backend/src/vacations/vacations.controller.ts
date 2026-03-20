@@ -12,6 +12,7 @@ class CreateVacationDto {
   sold?: boolean;
   active?: boolean;
   note?: string;
+  request?: number | null;
 }
 
 class UpdateVacationDto {
@@ -21,6 +22,7 @@ class UpdateVacationDto {
   sold?: boolean;
   active?: boolean;
   note?: string;
+  request?: number | null;
 }
 
 @Controller('vacations')
@@ -43,8 +45,7 @@ export class VacationsController {
   }
 
   @Post()
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ADMIN')
+  @UseGuards(JwtAuthGuard)
   create(@Body() body: CreateVacationDto) {
     return this.svc.create(body);
   }

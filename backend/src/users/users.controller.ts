@@ -31,14 +31,17 @@ export class UsersController {
   }
 
   @Post()
-  create(@Body() body: { email: string; password: string; roles: string[]; name?: string }) {
-    return this.usersService.create(body.email, body.password, body.roles, body.name);
+  create(
+    @Body()
+    body: { email: string; password: string; roles: string[]; name?: string; workerId?: number | null },
+  ) {
+    return this.usersService.create(body.email, body.password, body.roles, body.name, body.workerId ?? null);
   }
 
   @Put(':id')
   update(
     @Param('id', ParseIntPipe) id: number,
-    @Body() body: { email?: string; password?: string; roles?: string[]; name?: string },
+    @Body() body: { email?: string; password?: string; roles?: string[]; name?: string; workerId?: number | null },
   ) {
     return this.usersService.update(id, body);
   }
