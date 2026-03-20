@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState, useMemo, useRef } from 'react'
 import { useRouter } from 'next/router'
 import {
   PALETTE, btnPrimary, btnSmall, btnSmallRed,
@@ -18,6 +18,7 @@ type Vacation = {
   id: number; workerId: number; startDate: string; endDate: string;
   daysUsed: number; sold: boolean; active: boolean; note?: string;
   worker?: Worker;
+  request?: number | null
 }
 
 type Summary = {
@@ -127,6 +128,7 @@ export default function VacationsPage() {
   const [nowTick, setNowTick] = useState<number>(Date.now())
 
   const [showScheduleModal, setShowScheduleModal] = useState(false)
+  const [currentUserWorkerId, setCurrentUserWorkerId] = useState<number | null>(null)
   const [showWorkersModal, setShowWorkersModal] = useState(false)
   const [showHolidaysModal, setShowHolidaysModal] = useState(false)
 
@@ -166,6 +168,12 @@ export default function VacationsPage() {
   const [selectedDay, setSelectedDay] = useState<Date | null>(null)
   const [panelOpen, setPanelOpen] = useState(false)
 
+  // Notifications (admin-only): pending vacation requests
+  const notifRef = useRef<HTMLButtonElement | null>(null)
+  const [showNotifications, setShowNotifications] = useState(false)
+  const [notifPos, setNotifPos] = useState<{ top: number; left: number } | null>(null)
+  const [hoveredNotif, setHoveredNotif] = useState<string | null>(null)
+
   useEffect(() => {
     if (selectedDay) {
       setPanelOpen(false)
@@ -183,7 +191,17 @@ export default function VacationsPage() {
       const roles = JSON.parse(localStorage.getItem('shifts_roles') || '[]')
       setIsAdmin(Array.isArray(roles) && roles.includes('ADMIN'))
     } catch { setIsAdmin(false) }
-    load()
+    load();
+    // try to load current user info (may be unauthorized for guest/no-token)
+    (async () => {
+      try {
+        const res = await fetch(`${API_BASE}/auth/me`, { headers: authHeaders() })
+        if (res.ok) {
+          const j = await res.json()
+          setCurrentUserWorkerId(j?.workerId ?? null)
+        }
+      } catch (e) { /* ignore */ }
+    })()
   }, [])
 
   useEffect(() => {
@@ -251,6 +269,7 @@ export default function VacationsPage() {
     return vacations.filter(v => {
       if (!v.active) return false
       if (v.sold) return false
+      if (v.request === 2) return false
       if (filterWorkerId && v.workerId !== filterWorkerId) return false
       const s = isoDate(parseLocalDate(v.startDate.slice(0, 10)))
       const e = isoDate(parseLocalDate(v.endDate.slice(0, 10)))
@@ -281,7 +300,8 @@ export default function VacationsPage() {
       endDate: formEnd,
       daysUsed: Number(formDays),
       sold: formSold,
-      note: editId ? (formNote === '' ? null : formNote) : (formNote || undefined),
+        note: editId ? (formNote === '' ? null : formNote) : (formNote || undefined),
+        request: isAdmin ? undefined : 0,
     }
     try {
       const url = editId ? `${API_BASE}/vacations/${editId}` : `${API_BASE}/vacations`
@@ -309,6 +329,23 @@ export default function VacationsPage() {
     } catch { addToast('Erro de rede', 'error') }
   }
 
+  async function changeRequest(id: number, value: number) {
+    try {
+      const res = await fetch(`${API_BASE}/vacations/${id}`, { method: 'PUT', headers: jsonAuthHeaders(), body: JSON.stringify({ request: value }) })
+      if (!res.ok) {
+        const t = await res.text()
+        let msg = 'Erro ao alterar status'
+        try { const j = JSON.parse(t); if (j?.message) msg = j.message } catch {}
+        addToast(msg, 'error'); return
+      }
+      addToast(value === 1 ? 'Solicitação aprovada' : 'Solicitação recusada', 'success')
+      load()
+    } catch (err) { console.error(err); addToast('Erro de rede', 'error') }
+  }
+
+  function approveVacation(id: number) { changeRequest(id, 1) }
+  function rejectVacation(id: number) { if (!confirm('Recusar esta solicitação?')) return; changeRequest(id, 2) }
+
   function startEdit(v: Vacation) {
     setEditId(v.id)
     setFormWorkerId(v.workerId)
@@ -317,6 +354,13 @@ export default function VacationsPage() {
     setFormDays(v.daysUsed)
     setFormSold(v.sold)
     setFormNote(v.note || '')
+    setShowScheduleModal(true)
+  }
+
+  function openScheduleModal(prefillDate?: string) {
+    resetForm()
+    if (prefillDate) setFormStart(prefillDate)
+    if (currentUserWorkerId && !isAdmin) setFormWorkerId(currentUserWorkerId)
     setShowScheduleModal(true)
   }
 
@@ -344,6 +388,7 @@ export default function VacationsPage() {
     .slice().sort((a, b) => parseLocalDate(b.startDate.slice(0, 10)).getTime() - parseLocalDate(a.startDate.slice(0, 10)).getTime())
 
   const displayedVacations = baseFilteredVacations.filter(v => {
+    if (v.request === 2) return false
     if (filterActiveStatus === 'active' && !v.active) return false
     if (filterActiveStatus === 'inactive' && v.active) return false
 
@@ -381,6 +426,8 @@ export default function VacationsPage() {
 
     return true
   })
+
+  const pendingRequests = vacations.filter(v => v.request === 0)
 
   const MONTHS = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro']
   const WEEKDAYS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
@@ -422,6 +469,41 @@ export default function VacationsPage() {
           {workers.filter(w => w.active).map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
         </select>
         <div style={{ flex: 1 }} />
+        {!isAdmin && (
+          <button onClick={() => openScheduleModal()} style={{ ...btnNav, background: PALETTE.primary, color: '#fff', border: 'none' }}>+ Agendar</button>
+        )}
+
+        {isAdmin && (
+          <button
+            ref={notifRef}
+            type="button"
+            onClick={() => {
+              if (showNotifications) { setShowNotifications(false); return }
+              const rect = notifRef.current?.getBoundingClientRect()
+              const popWidth = 420
+              if (rect) {
+                const left = Math.max(8, Math.min(rect.right - popWidth, window.innerWidth - popWidth - 8))
+                setNotifPos({ top: rect.bottom + 8 + window.scrollY, left })
+              }
+              setShowNotifications(true)
+            }}
+            title="Solicitações"
+            style={{
+              ...btnNav,
+              marginLeft: 8,
+              background: pendingRequests.length > 0 ? PALETTE.success : PALETTE.hoverBg,
+              color: PALETTE.textPrimary,
+              border: `1px solid ${PALETTE.border}`,
+              position: 'relative'
+            }}
+          >
+            🔔
+            {pendingRequests.length > 0 && (
+              <span style={{ position: 'absolute', top: -6, right: -6, minWidth: 18, height: 18, borderRadius: 9, background: '#FF3B30', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, padding: '0 6px' }}>{pendingRequests.length}</span>
+            )}
+          </button>
+        )}
+        
         {(['dashboard', 'list'] as Tab[]).map(t => (
           <button key={t} onClick={() => setTab(t)} style={{
             ...btnNav,
@@ -432,6 +514,7 @@ export default function VacationsPage() {
             {t === 'dashboard' ? 'Painel' : 'Lançamentos'}
           </button>
         ))}
+      
       </div>
 
       <div style={{ padding: 24, flex: 1, minHeight: 0 }}>
@@ -500,6 +583,7 @@ export default function VacationsPage() {
       {selectedDay && (() => {
         const dayVacs = vacations.filter(v => {
           if (!v.active) return false
+          if (v.request === 2) return false
           const s = isoDate(parseLocalDate(v.startDate.slice(0, 10)))
           const e = isoDate(parseLocalDate(v.endDate.slice(0, 10)))
           const iso = isoDate(selectedDay)
@@ -612,6 +696,15 @@ export default function VacationsPage() {
                           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                             <strong style={{ fontSize: 14, display: 'block', maxWidth: '250px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{w?.name || '?'}</strong>
                             {v.sold && <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 4, background: `${PALETTE.info}22`, color: PALETTE.info }}>Vendeu</span>}
+                            {typeof v.request !== 'undefined' && v.request !== null && v.request === 0 && (
+                              <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 4, background: `${PALETTE.warning}22`, color: PALETTE.warning }}>Solicitação</span>
+                            )}
+                            {typeof v.request !== 'undefined' && v.request !== null && v.request === 1 && (
+                              <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 4, background: `${PALETTE.success}22`, color: PALETTE.success }}>Aprovado</span>
+                            )}
+                            {typeof v.request !== 'undefined' && v.request !== null && v.request === 2 && (
+                              <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 4, background: `${PALETTE.error}22`, color: PALETTE.error }}>Recusado</span>
+                            )}
                           </div>
                           <div style={{ fontSize: 12, color: PALETTE.textSecondary, marginTop: 4 }}>
                             {fmtDate(v.startDate)} — {fmtDate(v.endDate)} · {v.daysUsed} dias
@@ -622,6 +715,12 @@ export default function VacationsPage() {
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                             <button onClick={() => { startEdit(v) }} style={btnSmall}>Editar</button>
                             <button onClick={() => { setPanelOpen(false); setTimeout(() => onDelete(v.id), 300) }} style={{ ...btnSmallRed }}>Apagar</button>
+                            {v.request === 0 && (
+                              <div style={{ display: 'flex', gap: 6 }}>
+                                <button onClick={() => approveVacation(v.id)} style={{ ...btnSmall, background: PALETTE.success, color: '#fff', border: 'none' }}>Aprovar</button>
+                                <button onClick={() => rejectVacation(v.id)} style={{ ...btnSmallRed }}>Recusar</button>
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>
@@ -663,9 +762,8 @@ export default function VacationsPage() {
                         setPanelOpen(false)
                         setTimeout(() => {
                           setSelectedDay(null)
-                          resetForm()
-                          setFormStart(sel)
-                          setShowScheduleModal(true)
+                          // use helper so guest users get their worker prefilled and locked
+                          openScheduleModal(sel)
                         }, 300)
                       }}
                       style={{ ...btnPrimary, flex: 1, textAlign: 'center' }}
@@ -721,6 +819,70 @@ export default function VacationsPage() {
               <button onClick={() => setShowHolidaysModal(false)} style={btnSmall}>✕ Fechar</button>
             </div>
             <HolidaysContent compact />
+          </div>
+        </div>
+      )}
+      {showNotifications && notifPos && (
+        <div id="vacations-notif-popover" style={{ position: 'absolute', top: notifPos.top, left: notifPos.left, width: 420, zIndex: 2000 }}>
+          <div style={{
+            background: PALETTE.cardBg,
+            border: `1px solid ${PALETTE.border}`,
+            borderRadius: 12,
+            padding: 10,
+            boxShadow: '0 20px 60px rgba(2,6,23,0.18), 0 8px 24px rgba(2,6,23,0.12)',
+            maxHeight: '48vh',
+            overflowY: 'auto'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h3 style={{ margin: 0, fontSize: 16 }}>Solicitações de Férias</h3>
+              <button type="button" onClick={() => setShowNotifications(false)} style={btnNav as any}>✕</button>
+            </div>
+
+            <div style={{ marginTop: 8 }}>
+              {pendingRequests.length === 0 ? (
+                <div style={{ color: PALETTE.textSecondary }}>Nenhuma solicitação.</div>
+              ) : (
+                <div style={{ display: 'grid', gap: 8 }}>
+                  {pendingRequests.map(v => {
+                    const w = workers.find(x => x.id === v.workerId)
+                    return (
+                      <div
+                        key={v.id}
+                        onClick={() => {
+                          setShowNotifications(false)
+                          const d = parseLocalDate(v.startDate.slice(0, 10))
+                          setCalMonth(new Date(d.getFullYear(), d.getMonth(), 1))
+                          setSelectedDay(d)
+                          requestAnimationFrame(() => setPanelOpen(true))
+                        }}
+                        onMouseEnter={() => setHoveredNotif(`vac-${v.id}`)}
+                        onMouseLeave={() => setHoveredNotif(null)}
+                        role="button"
+                        tabIndex={0}
+                        style={{
+                          padding: 6,
+                          borderRadius: 6,
+                          background: hoveredNotif === `vac-${v.id}` ? `${PALETTE.primary}11` : PALETTE.cardBg,
+                          border: `1px solid ${PALETTE.border}`,
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 8,
+                          minHeight: 44,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        <div style={{ width: 12, height: 12, borderRadius: '50%', background: w?.color || PALETTE.border }} />
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontSize: 13, fontWeight: 700 }}>{w?.name || '?'}</div>
+                          <div style={{ fontSize: 12, color: PALETTE.textSecondary }}>{fmtDate(v.startDate)} — {fmtDate(v.endDate)} · {v.daysUsed} dias</div>
+                        </div>
+                        <div style={{ fontSize: 12, color: PALETTE.warning }}>Solicitação</div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}
@@ -1105,7 +1267,13 @@ export default function VacationsPage() {
         <div style={{ ...cardStyle, display: 'grid', gap: 14 }}>
           <div>
             <label style={labelStyle}>Colaborador *</label>
-            <select value={formWorkerId} onChange={e => setFormWorkerId(e.target.value ? Number(e.target.value) : '')} required style={selectStyle}>
+            <select
+              value={formWorkerId}
+              onChange={e => setFormWorkerId(e.target.value ? Number(e.target.value) : '')}
+              required
+              style={selectStyle}
+              disabled={!isAdmin && currentUserWorkerId !== null && !editId}
+            >
               <option value="">Selecione...</option>
               {workers.filter(w => w.active).map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
             </select>
@@ -1255,6 +1423,15 @@ export default function VacationsPage() {
                       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', minWidth: 0 }}>
                       <strong style={{ display: 'block' }}>{w?.name || '?'}</strong>
                     {v.sold && <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 4, background: `${PALETTE.info}22`, color: PALETTE.info }}>Vendeu</span>}
+                    {typeof v.request !== 'undefined' && v.request !== null && v.request === 0 && (
+                      <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 4, background: `${PALETTE.warning}22`, color: PALETTE.warning }}>Solicitação</span>
+                    )}
+                    {typeof v.request !== 'undefined' && v.request !== null && v.request === 1 && (
+                      <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 4, background: `${PALETTE.success}22`, color: PALETTE.success }}>Aprovado</span>
+                    )}
+                    {typeof v.request !== 'undefined' && v.request !== null && v.request === 2 && (
+                      <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 4, background: `${PALETTE.error}22`, color: PALETTE.error }}>Recusado</span>
+                    )}
                     {!v.active && <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 4, background: `${PALETTE.error}22`, color: PALETTE.error }}>Inativo</span>}
                   </div>
                   <div style={{ fontSize: 12, color: PALETTE.textSecondary, marginTop: 2 }}>
@@ -1262,8 +1439,18 @@ export default function VacationsPage() {
                     {v.note && <span style={{ marginLeft: 8, fontStyle: 'italic' }}>({v.note})</span>}
                   </div>
                 </div>
-                {isAdmin && <button onClick={() => startEdit(v)} style={btnSmall}>Editar</button>}
-                {isAdmin && <button onClick={() => onDelete(v.id)} style={{ ...btnSmallRed }}>Apagar</button>}
+                {isAdmin && (
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button onClick={() => startEdit(v)} style={btnSmall}>Editar</button>
+                    <button onClick={() => onDelete(v.id)} style={{ ...btnSmallRed }}>Apagar</button>
+                    {v.request === 0 && (
+                      <>
+                        <button onClick={() => approveVacation(v.id)} style={{ ...btnSmall, background: PALETTE.success, color: '#fff', border: 'none' }}>Aprovar</button>
+                        <button onClick={() => rejectVacation(v.id)} style={{ ...btnSmallRed }}>Recusar</button>
+                      </>
+                    )}
+                  </div>
+                )}
               </div>
             )
           })}

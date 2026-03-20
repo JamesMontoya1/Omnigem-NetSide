@@ -28,6 +28,7 @@ export class VacationsService {
     sold?: boolean;
     active?: boolean;
     note?: string;
+    request?: number | null;
   }) {
     const worker = await this.prisma.worker.findUnique({ where: { id: data.workerId } });
     if (!worker) throw new BadRequestException('Trabalhador não encontrado');
@@ -41,6 +42,7 @@ export class VacationsService {
         sold: data.sold ?? false,
         active: data.active ?? true,
         note: data.note,
+        request: typeof data.request === 'undefined' ? null : data.request,
       },
       include: { worker: true },
     });
@@ -53,6 +55,7 @@ export class VacationsService {
     sold?: boolean;
     active?: boolean;
     note?: string;
+    request?: number | null;
   }) {
     return this.prisma.vacation.update({
       where: { id },
@@ -63,6 +66,7 @@ export class VacationsService {
         sold: data.sold,
         active: data.active,
         note: data.note,
+        request: typeof data.request === 'undefined' ? undefined : data.request,
       },
       include: { worker: true },
     });
@@ -93,13 +97,13 @@ export class VacationsService {
       const totalEarned = yearsWorked * 30;
 
       const totalUsed = w.vacations
-        .filter(v => v.active && new Date(v.startDate) <= today)
+        .filter(v => v.active && v.request !== 2 && new Date(v.startDate) <= today)
         .reduce((sum, v) => sum + v.daysUsed, 0);
 
       const pendingDays = totalEarned - totalUsed;
 
       const upcoming = w.vacations
-        .filter(v => v.active && new Date(v.startDate) > today)
+        .filter(v => v.active && v.request !== 2 && new Date(v.startDate) > today)
         .sort((a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime());
 
       return {

@@ -10,7 +10,14 @@ interface User {
   email: string
   name: string | null
   roles: string[]
+  workerId?: number | null
+  worker?: { id: number; name: string } | null
   createdAt: string
+}
+
+interface Worker {
+  id: number
+  name: string
 }
 
 export default function Usuarios() {
@@ -25,6 +32,8 @@ export default function Usuarios() {
   const [formName, setFormName] = useState('')
   const [formPassword, setFormPassword] = useState('')
   const [formRoles, setFormRoles] = useState<string[]>(['GUEST'])
+  const [workers, setWorkers] = useState<Worker[]>([])
+  const [formWorkerId, setFormWorkerId] = useState<number | null>(null)
   const [formError, setFormError] = useState('')
   const [saving, setSaving] = useState(false)
 
@@ -40,7 +49,17 @@ export default function Usuarios() {
       return
     }
     load()
+    loadWorkers()
   }, [])
+
+  async function loadWorkers() {
+    try {
+      const res = await fetch(`${API_BASE}/workers`, { headers: jsonAuthHeaders() })
+      if (!res.ok) throw new Error('Erro ao carregar trabalhadores')
+      setWorkers(await res.json())
+    } catch (e) {
+    }
+  }
 
   async function load() {
     setLoading(true)
@@ -62,6 +81,7 @@ export default function Usuarios() {
     setFormName('')
     setFormPassword('')
     setFormRoles(['GUEST'])
+    setFormWorkerId(null)
     setFormError('')
     setShowForm(true)
   }
@@ -72,6 +92,7 @@ export default function Usuarios() {
     setFormName(u.name || '')
     setFormPassword('')
     setFormRoles(u.roles.length ? [...u.roles] : ['GUEST'])
+    setFormWorkerId(u.workerId ?? null)
     setFormError('')
     setShowForm(true)
   }
@@ -92,6 +113,7 @@ export default function Usuarios() {
     try {
       const body: any = { email: formEmail.trim(), roles: formRoles, name: formName.trim() || null }
       if (formPassword) body.password = formPassword
+      if (formWorkerId !== null) body.workerId = formWorkerId
 
       const url = editingId ? `${API_BASE}/users/${editingId}` : `${API_BASE}/users`
       const method = editingId ? 'PUT' : 'POST'
@@ -177,6 +199,15 @@ export default function Usuarios() {
                 <div>
                   <label style={{ display: 'block', fontWeight: 600, fontSize: 13, color: PALETTE.textSecondary, marginBottom: 4 }}>Nome</label>
                   <input value={formName} onChange={e => setFormName(e.target.value)} placeholder="Nome completo" style={inputStyle} />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontWeight: 600, fontSize: 13, color: PALETTE.textSecondary, marginBottom: 4 }}>Trabalhador relacionado</label>
+                  <select value={formWorkerId ?? ''} onChange={e => setFormWorkerId(e.target.value ? Number(e.target.value) : null)} style={inputStyle}>
+                    <option value="">Nenhum</option>
+                    {workers.map(w => (
+                      <option key={w.id} value={w.id}>{w.name}</option>
+                    ))}
+                  </select>
                 </div>
                 <div>
                   <label style={{ display: 'block', fontWeight: 600, fontSize: 13, color: PALETTE.textSecondary, marginBottom: 4 }}>
