@@ -32,6 +32,7 @@ export class VacationsService {
   }) {
     const worker = await this.prisma.worker.findUnique({ where: { id: data.workerId } });
     if (!worker) throw new BadRequestException('Trabalhador não encontrado');
+    if (worker.dontVacation) throw new BadRequestException('Este trabalhador não pode ser colocado em férias');
 
     return this.prisma.vacation.create({
       data: {
@@ -78,7 +79,7 @@ export class VacationsService {
 
   async summary() {
     const workers = await this.prisma.worker.findMany({
-      where: { active: true },
+      where: { active: true, dontVacation: false },
       include: { vacations: true },
       orderBy: { name: 'asc' },
     });

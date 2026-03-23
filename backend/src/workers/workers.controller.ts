@@ -13,6 +13,8 @@ class CreateWorkerDto {
   terminationDate?: string;
   doesShifts?: boolean;
   doesTravel?: boolean;
+  dontVacation?: boolean;
+  positionId?: number | null;
 }
 
 
@@ -24,6 +26,8 @@ class UpdateWorkerDto {
   terminationDate?: string;
   doesShifts?: boolean;
   doesTravel?: boolean;
+  dontVacation?: boolean;
+  positionId?: number | null;
 }
 
 @Controller('workers')

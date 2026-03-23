@@ -12,13 +12,14 @@ import { VacationsModule } from './vacations/vacations.module';
 import { TripsModule } from './trips/trips.module';
 import { ServiceTypesModule } from './service-types/service-types.module';
 import { CitiesModule } from './cities/cities.module';
+import { PositionsModule } from './positions/positions.module';
 import { VehiclesModule } from './vehicles/vehicles.module';
 import { VehicleExpensesModule } from './vehicle-expenses/vehicle-expenses.module';
 import { VehicleExpenseCategoriesModule } from './vehicle-expense-categories/vehicle-expense-categories.module';
 import { AppController } from './app.controller';
 
 @Module({
-  imports: [PrismaModule, UsersModule, AuthModule, WorkersModule, HolidaysModule, RecurringPatternsModule, AssignmentsModule, RotationsModule, VacationsModule, TripsModule, CitiesModule, VehiclesModule, VehicleExpensesModule, VehicleExpenseCategoriesModule, ServiceTypesModule],
+  imports: [PrismaModule, UsersModule, AuthModule, WorkersModule, HolidaysModule, RecurringPatternsModule, AssignmentsModule, RotationsModule, VacationsModule, TripsModule, CitiesModule, VehiclesModule, VehicleExpensesModule, VehicleExpenseCategoriesModule, ServiceTypesModule, PositionsModule],
   controllers: [AppController],
   providers: [PrismaService],
 })
