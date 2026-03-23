@@ -43,6 +43,13 @@ select:focus, input:focus, textarea:focus {
   box-shadow: 0 0 0 2px rgba(92, 124, 250, 0.4);
 }
 
+/* Selection color for inputs and textareas */
+input::selection, textarea::selection,
+input::-moz-selection, textarea::-moz-selection {
+  background: #0d6efd;
+  color: #ffffff;
+}
+
 /* ── Scrollbar dark ── */
 ::-webkit-scrollbar { width: 8px; height: 8px }
 ::-webkit-scrollbar-track { background: #20242A }

@@ -26,7 +26,7 @@ export default function App({ Component, pageProps }: AppProps) {
     <ToastProvider>
       <Head>
         <title>Omnigem NETSide</title>
-        <link rel="icon" href="/icon_NETSide.png" />
+        <link rel="icon" href="/NETSide_Sistemas_LOGO.png" />
       </Head>
       <Component {...pageProps} />
     </ToastProvider>
