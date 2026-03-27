@@ -1197,14 +1197,7 @@ export default function Trips() {
   return (
     <main style={{ height: '100vh', background: PALETTE.background, color: PALETTE.textPrimary, fontFamily: 'system-ui, sans-serif' }}>
       <div style={{ margin: '0 auto', flex: 1, boxSizing: 'border-box', height: '100%', display: 'flex', flexDirection: 'column' }}>
-        <div style={{ padding: '16px 24px', display: 'flex', alignItems: 'center', gap: 16, borderBottom: `1px solid ${PALETTE.border}`, marginBottom: 12 }}>
-          <button onClick={() => router.push('/selection')} style={{
-            ...btnNav,
-            background: 'transparent',
-            color: '#FF3B30',
-            border: '2px solid #FF3B30',
-            fontWeight: 700,
-          }}>← Voltar</button>
+        <div style={{ padding: '16px 24px', paddingLeft: 80, display: 'flex', alignItems: 'center', gap: 16, borderBottom: `1px solid ${PALETTE.border}`, marginBottom: 12 }}>
           <h2 style={{ margin: 0, fontSize: 22 }}>Viagens</h2>
           {canEdit && <button type="button" onClick={() => setShowManageWorkers(true)} style={btnNav}>👷 Trabalhadores</button>}
           <button

@@ -448,14 +448,7 @@ export default function VacationsPage() {
 
   return (
     <main style={{ height: '100vh', display: 'flex', flexDirection: 'column', backgroundColor: PALETTE.background, fontFamily: 'system-ui, sans-serif', color: PALETTE.textPrimary }}>
-      <div style={{ padding: '16px 24px', display: 'flex', alignItems: 'center', gap: 16, borderBottom: `1px solid ${PALETTE.border}` }}>
-        <button onClick={() => router.push('/selection')} style={{
-            ...btnNav,
-            background: 'transparent',
-            color: '#FF3B30',
-            border: '2px solid #FF3B30',
-            fontWeight: 700,
-          }}>← Voltar</button>        
+      <div style={{ padding: '16px 24px', paddingLeft: 80, display: 'flex', alignItems: 'center', gap: 16, borderBottom: `1px solid ${PALETTE.border}` }}>
         <h1 style={{ margin: 0, fontSize: 22 }}>Férias</h1>
         {isAdmin && <button onClick={() => setShowWorkersModal(true)} style={btnNav}>👷 Trabalhadores</button>}
         {isAdmin && <button onClick={() => setShowHolidaysModal(true)} style={btnNav}>🎉 Feriados</button>}

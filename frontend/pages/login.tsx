@@ -28,7 +28,7 @@ export default function Login() {
       const data = await res.json()
       localStorage.setItem('shifts_token', data.accessToken)
       localStorage.setItem('shifts_roles', JSON.stringify(data.roles))
-      router.push('/selection')
+      router.push('/workspace')
     } catch (err) {
       setError('Erro de conexão com o servidor')
     } finally {
@@ -39,7 +39,7 @@ export default function Login() {
   function handleGuestAccess() {
     localStorage.setItem('shifts_token', '')
     localStorage.setItem('shifts_roles', JSON.stringify(['GUEST']))
-    router.push('/selection')
+    router.push('/workspace')
   }
 
   return (

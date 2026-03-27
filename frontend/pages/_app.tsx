@@ -3,6 +3,7 @@ import type { AppProps } from 'next/app'
 import Head from 'next/head'
 import { useEffect } from 'react'
 import ToastProvider from '../components/shared/ToastProvider'
+import Layout from '../components/shared/Layout'
 
 export default function App({ Component, pageProps }: AppProps) {
   useEffect(() => {
@@ -28,7 +29,9 @@ export default function App({ Component, pageProps }: AppProps) {
         <title>Omnigem NETSide</title>
         <link rel="icon" href="/NETSide_Sistemas_LOGO.png" />
       </Head>
-      <Component {...pageProps} />
+      <Layout>
+        <Component {...pageProps} />
+      </Layout>
     </ToastProvider>
   )
 }

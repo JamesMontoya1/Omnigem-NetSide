@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/router'
-import { PALETTE, btnPrimary, btnConfirm, btnCancel, btnDanger, btnSmall, inputStyle } from '../styles/theme'
+import { PALETTE, btnPrimary, btnConfirm, btnCancel, btnDanger, btnSmall, inputStyle, cardStyle, labelStyle } from '../styles/theme'
 import { API_BASE, jsonAuthHeaders } from '../config/api'
 
 const ALL_ROLES = ['ADMIN', 'GUEST', 'TRAVELER', 'SPED_MANAGER'] as const
@@ -41,11 +41,11 @@ export default function Usuarios() {
     try {
       const roles = JSON.parse(localStorage.getItem('shifts_roles') || '[]')
       if (!Array.isArray(roles) || !roles.includes('ADMIN')) {
-        router.push('/selection')
+        router.push('/workspace')
         return
       }
     } catch {
-      router.push('/selection')
+      router.push('/workspace')
       return
     }
     load()
@@ -151,23 +151,16 @@ export default function Usuarios() {
   }
 
   return (
-    <main style={{
-      minHeight: '100vh',
-      backgroundColor: PALETTE.background,
-      fontFamily: 'system-ui, sans-serif',
-      color: PALETTE.textPrimary,
-      padding: 32,
-    }}>
+    <main style={{ padding: 24 }}>
       <div style={{ maxWidth: 800, margin: '0 auto' }}>
         {/* Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
           <div>
-            <h1 style={{ margin: 0, fontSize: 22 }}>Gerenciar Usuários</h1>
-            <p style={{ margin: '4px 0 0', color: PALETTE.textSecondary, fontSize: 14 }}>Criar, editar e remover usuários do sistema</p>
+              <h1 style={{ margin: 0, fontSize: 22, color: PALETTE.textPrimary }}>Gerenciar Usuários</h1>
+              <p style={{ margin: '4px 0 0', color: PALETTE.textSecondary, fontSize: 14 }}>Criar, editar e remover usuários do sistema</p>
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
             <button onClick={openCreate} style={btnPrimary}>+ Novo Usuário</button>
-            <button onClick={() => router.push('/selection')} style={btnCancel}>Voltar</button>
           </div>
         </div>
 
@@ -179,29 +172,22 @@ export default function Usuarios() {
             position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)',
             display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
           }} onClick={() => setShowForm(false)}>
-            <div style={{
-              background: PALETTE.cardBg,
-              border: `1px solid ${PALETTE.border}`,
-              borderRadius: 12,
-              padding: '28px 28px 20px',
-              width: 440,
-              boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
-            }} onClick={e => e.stopPropagation()}>
+            <div style={{ ...cardStyle, borderRadius: 12, padding: '28px 28px 20px', width: 440, boxShadow: '0 8px 32px rgba(0,0,0,0.4)' }} onClick={e => e.stopPropagation()}>
               <h2 style={{ margin: '0 0 20px', fontSize: 18, color: PALETTE.textPrimary }}>
                 {editingId ? 'Editar Usuário' : 'Novo Usuário'}
               </h2>
 
               <div style={{ display: 'grid', gap: 14 }}>
                 <div>
-                  <label style={{ display: 'block', fontWeight: 600, fontSize: 13, color: PALETTE.textSecondary, marginBottom: 4 }}>Email (identificador)</label>
+                  <label style={labelStyle}>Email (identificador)</label>
                   <input value={formEmail} onChange={e => setFormEmail(e.target.value)} placeholder="ex: joao" style={inputStyle} autoFocus />
                 </div>
                 <div>
-                  <label style={{ display: 'block', fontWeight: 600, fontSize: 13, color: PALETTE.textSecondary, marginBottom: 4 }}>Nome</label>
+                  <label style={labelStyle}>Nome</label>
                   <input value={formName} onChange={e => setFormName(e.target.value)} placeholder="Nome completo" style={inputStyle} />
                 </div>
                 <div>
-                  <label style={{ display: 'block', fontWeight: 600, fontSize: 13, color: PALETTE.textSecondary, marginBottom: 4 }}>Trabalhador relacionado</label>
+                  <label style={labelStyle}>Trabalhador relacionado</label>
                   <select value={formWorkerId ?? ''} onChange={e => setFormWorkerId(e.target.value ? Number(e.target.value) : null)} style={inputStyle}>
                     <option value="">Nenhum</option>
                     {workers.map(w => (
@@ -210,13 +196,13 @@ export default function Usuarios() {
                   </select>
                 </div>
                 <div>
-                  <label style={{ display: 'block', fontWeight: 600, fontSize: 13, color: PALETTE.textSecondary, marginBottom: 4 }}>
+                  <label style={labelStyle}>
                     {editingId ? 'Nova Senha (deixe vazio para manter)' : 'Senha'}
                   </label>
                   <input type="password" value={formPassword} onChange={e => setFormPassword(e.target.value)} placeholder="••••••••" style={inputStyle} />
                 </div>
                 <div>
-                  <label style={{ display: 'block', fontWeight: 600, fontSize: 13, color: PALETTE.textSecondary, marginBottom: 6 }}>Roles</label>
+                  <label style={{ ...labelStyle, marginBottom: 6 }}>Roles</label>
                   <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                     {ALL_ROLES.map(role => {
                       const active = formRoles.includes(role)
@@ -261,12 +247,7 @@ export default function Usuarios() {
         {loading ? (
           <p style={{ color: PALETTE.textSecondary, textAlign: 'center', marginTop: 40 }}>Carregando...</p>
         ) : (
-          <div style={{
-            background: PALETTE.cardBg,
-            border: `1px solid ${PALETTE.border}`,
-            borderRadius: 8,
-            overflow: 'hidden',
-          }}>
+          <div style={{ ...cardStyle, overflow: 'hidden' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr style={{ borderBottom: `1px solid ${PALETTE.border}` }}>

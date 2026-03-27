@@ -96,9 +96,9 @@ export default function FeriasLayout({
           )}
         </nav>
 
-        <div style={{ paddingTop: 16, borderTop: `1px solid ${PALETTE.border}` }}>
+          <div style={{ paddingTop: 16, borderTop: `1px solid ${PALETTE.border}` }}>
           <button
-            onClick={() => router.push('/selection')}
+            onClick={() => router.push('/workspace')}
             style={{
               width: '100%',
               padding: '8px 12px',
@@ -112,7 +112,7 @@ export default function FeriasLayout({
               marginBottom: 8,
             }}
           >
-            Voltar para seleção
+            Voltar para a Área de Trabalho
           </button>
 
           <button
