@@ -2,6 +2,10 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/router'
 import { API_BASE, authHeaders } from '../../config/api'
 import { PALETTE, btnNav } from '../../styles/theme'
+import WorkersContent from '../shared/WorkersContent'
+import HolidaysContent from '../shared/HolidaysContent'
+import GeneralPanel from './GeneralPanel'
+import { makeModalDraggable } from '../shared/draggableModal'
 
 type Vacation = { id: number; request?: number | null }
 type Trip = { id: number; date: string; completed?: boolean }
@@ -41,18 +45,19 @@ function isRotationActiveInDate(rotation: Rotation, date: Date) {
 
 export default function SelectionPanel({ embedded = false }: { embedded?: boolean }) {
   const router = useRouter()
-  const notifRef = useRef<HTMLButtonElement | null>(null)
-  const [showNotifications, setShowNotifications] = useState(false)
-  const [notifPos, setNotifPos] = useState<{ top: number; left: number } | null>(null)
-  const [hoveredNotif, setHoveredNotif] = useState<string | null>(null)
+  
   const [loading, setLoading] = useState(true)
-
-  // Draggable panel state
-  const panelRef = useRef<HTMLDivElement | null>(null)
-  const [panelPos, setPanelPos] = useState<{ top: number; left: number } | null>(null)
-  const draggingRef = useRef<{ startX: number; startY: number; startLeft: number; startTop: number; panelWidth: number; panelHeight: number } | null>(null)
-  const [dragging, setDragging] = useState(false)
   const [minimized, setMinimized] = useState<boolean>(() => !embedded)
+  const [showWorkersModal, setShowWorkersModal] = useState(false)
+  const [showHolidaysModal, setShowHolidaysModal] = useState(false)
+  const [focusedModal, setFocusedModal] = useState<'workers' | 'holidays' | 'panel' | null>(null)
+  const [isGuest, setIsGuest] = useState(false)
+
+  const workersPanelRef = useRef<HTMLDivElement | null>(null)
+  const [workersPanelPos, setWorkersPanelPos] = useState<{ top: number; left: number } | null>(null)
+
+  const holidaysPanelRef = useRef<HTMLDivElement | null>(null)
+  const [holidaysPanelPos, setHolidaysPanelPos] = useState<{ top: number; left: number } | null>(null)
 
   const [vacations, setVacations] = useState<Vacation[]>([])
   const [trips, setTrips] = useState<Trip[]>([])
@@ -93,67 +98,15 @@ export default function SelectionPanel({ embedded = false }: { embedded?: boolea
   }, [])
 
   useEffect(() => {
-    function onDoc(e: MouseEvent) {
-      if (!(e.target instanceof Node)) return
-      const pop = document.getElementById('selection-notifications-popover')
-      if (notifRef.current && notifRef.current.contains(e.target)) return
-      if (pop && pop.contains(e.target)) return
-      setShowNotifications(false)
+    try {
+      const roles = JSON.parse(localStorage.getItem('shifts_roles') || '[]')
+      setIsGuest(Array.isArray(roles) && roles.includes('GUEST'))
+    } catch (e) {
+      setIsGuest(false)
     }
-    if (showNotifications) document.addEventListener('mousedown', onDoc)
-    return () => document.removeEventListener('mousedown', onDoc)
-  }, [showNotifications])
+  }, [])
 
-  // Initialize panel position centered on first mount (runs when panel mounts)
-  useEffect(() => {
-    if (embedded) return
-    if (!panelRef.current) return
-    if (panelPos) return
-    const rect = panelRef.current.getBoundingClientRect()
-    setPanelPos({
-      top: Math.max(8, (window.innerHeight - rect.height) / 2),
-      left: Math.max(8, (window.innerWidth - rect.width) / 2),
-    })
-  }, [embedded, minimized, panelPos])
-
-  function startDrag(e: React.PointerEvent) {
-    if (embedded) return
-    if (e.button !== 0) return
-    e.preventDefault()
-    const rect = panelRef.current?.getBoundingClientRect()
-    draggingRef.current = {
-      startX: e.clientX,
-      startY: e.clientY,
-      startLeft: panelPos?.left ?? (rect ? rect.left : 0),
-      startTop: panelPos?.top ?? (rect ? rect.top : 0),
-      panelWidth: rect?.width ?? 0,
-      panelHeight: rect?.height ?? 0,
-    }
-    setDragging(true)
-
-    function onPointerMove(ev: PointerEvent) {
-      if (!draggingRef.current) return
-      const dx = ev.clientX - draggingRef.current.startX
-      const dy = ev.clientY - draggingRef.current.startY
-      let newLeft = Math.round(draggingRef.current.startLeft + dx)
-      let newTop = Math.round(draggingRef.current.startTop + dy)
-      const maxLeft = window.innerWidth - draggingRef.current.panelWidth - 8
-      const maxTop = window.innerHeight - draggingRef.current.panelHeight - 8
-      newLeft = Math.max(8, Math.min(newLeft, maxLeft))
-      newTop = Math.max(8, Math.min(newTop, maxTop))
-      setPanelPos({ left: newLeft, top: newTop })
-    }
-
-    function onPointerUp() {
-      draggingRef.current = null
-      setDragging(false)
-      document.removeEventListener('pointermove', onPointerMove)
-      document.removeEventListener('pointerup', onPointerUp)
-    }
-
-    document.addEventListener('pointermove', onPointerMove)
-    document.addEventListener('pointerup', onPointerUp)
-  }
+  
 
   const counts = useMemo(() => {
     const today = new Date()
@@ -287,207 +240,69 @@ export default function SelectionPanel({ embedded = false }: { embedded?: boolea
     }
   }, [vacations, trips, rotations, counts.pendingVacationRequests])
 
-  const basePanelStyle: any = {
-    width: embedded ? '100%' : 'min(920px, 94vw)',
-    background: PALETTE.cardBg,
-    border: `1px solid ${PALETTE.border}`,
-    borderRadius: 12,
-    padding: 20,
-    boxShadow: '0 10px 35px rgba(0,0,0,0.25)',
-    zIndex: 1000,
-  }
-  if (!embedded) {
-    basePanelStyle.position = 'fixed'
-    basePanelStyle.top = panelPos ? panelPos.top : '50%'
-    basePanelStyle.left = panelPos ? panelPos.left : '50%'
-    basePanelStyle.transform = panelPos ? 'none' : 'translate(-50%, -50%)'
-  } else {
-    basePanelStyle.position = 'relative'
-  }
+  useEffect(() => {
+    if (!showWorkersModal) return
+    if (!workersPanelRef.current) return
+    if (workersPanelPos) return
+    const rect = workersPanelRef.current.getBoundingClientRect()
+    setWorkersPanelPos({
+      top: Math.max(8, (window.innerHeight - rect.height) / 2),
+      left: Math.max(8, (window.innerWidth - rect.width) / 2),
+    })
+    setFocusedModal('workers')
+  }, [showWorkersModal, workersPanelPos])
 
-  const panelContent = (
-    <div ref={panelRef} style={basePanelStyle}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
-        <h1
-          style={{ margin: 0, fontSize: 22, flex: 1, cursor: embedded ? 'default' : dragging ? 'grabbing' : 'grab', userSelect: 'none' }}
-          onPointerDown={!embedded ? startDrag : undefined}
-        >Painel Geral</h1>
-        <button
-          ref={notifRef}
-          type="button"
-          onClick={() => {
-            if (showNotifications) { setShowNotifications(false); return }
-            const rect = notifRef.current?.getBoundingClientRect()
-            if (rect) {
-              const popWidth = 420
-              const left = Math.max(8, Math.min(rect.right - popWidth, window.innerWidth - popWidth - 8))
-              setNotifPos({ top: rect.bottom + 8, left })
-            }
-            setShowNotifications(true)
-          }}
-          style={{
-            ...btnNav,
-            background: totalNotifications > 0 ? PALETTE.success : PALETTE.hoverBg,
-            border: `1px solid ${PALETTE.border}`,
-            position: 'relative',
-          }}
-          title="Notificações"
-        >
-          🔔
-          {totalNotifications > 0 && (
-            <span style={{ position: 'absolute', top: -6, right: -6, minWidth: 18, height: 18, borderRadius: 9, background: '#FF3B30', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, padding: '0 6px' }}>
-              {totalNotifications}
-            </span>
-          )}
-        </button>
-        {!embedded && (
-          <button
-            type="button"
-            onClick={() => { setMinimized(true); setShowNotifications(false); setDragging(false) }}
-            style={{ ...btnNav, marginRight: 6 }}
-            title="Minimizar painel"
-          >
-            X
-          </button>
-        )}
-      </div>
+  useEffect(() => {
+    if (!showHolidaysModal) return
+    if (!holidaysPanelRef.current) return
+    if (holidaysPanelPos) return
+    const rect = holidaysPanelRef.current.getBoundingClientRect()
+    setHolidaysPanelPos({
+      top: Math.max(8, (window.innerHeight - rect.height) / 2),
+      left: Math.max(8, (window.innerWidth - rect.width) / 2),
+    })
+    setFocusedModal('holidays')
+  }, [showHolidaysModal, holidaysPanelPos])
 
-      <p style={{ marginTop: 0, marginBottom: 18, color: PALETTE.textSecondary }}>
-        {loading ? 'Carregando métricas...' : 'Resumo com informações das outras telas e ações necessárias.'}
-      </p>
+  useEffect(() => {
+    if (!showWorkersModal) return
+    if (!workersPanelRef.current) return
+    const dispose = makeModalDraggable(workersPanelRef.current, {
+      handleSelector: '[data-draggable-handle], h3',
+      onFocus: () => setFocusedModal('workers'),
+      onPositionChange: pos => setWorkersPanelPos(pos),
+    })
+    return () => dispose()
+  }, [showWorkersModal])
 
-      <div style={{ display: 'grid', gap: 12 }}>
-        {chartData.map(item => (
-          <button
-            key={item.key}
-            type="button"
-            onClick={() => router.push(item.route)}
-            style={{
-              textAlign: 'left',
-              background: PALETTE.backgroundSecondary,
-              border: `1px solid ${PALETTE.border}`,
-              borderRadius: 8,
-              padding: 12,
-              color: PALETTE.textPrimary,
-              cursor: 'pointer',
-            }}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-              <span style={{ fontSize: 13, color: PALETTE.textSecondary }}>{item.label}</span>
-              <strong>{item.value}</strong>
-            </div>
-            <div style={{ height: 10, borderRadius: 999, background: PALETTE.hoverBg, overflow: 'hidden' }}>
-              <div style={{
-                width: `${(item.value / maxValue) * 100}%`,
-                height: '100%',
-                background: item.color,
-                transition: 'width 260ms ease',
-              }} />
-            </div>
-          </button>
-        ))}
-      </div>
+  useEffect(() => {
+    if (!showHolidaysModal) return
+    if (!holidaysPanelRef.current) return
+    const dispose = makeModalDraggable(holidaysPanelRef.current, {
+      handleSelector: '[data-draggable-handle], h3',
+      onFocus: () => setFocusedModal('holidays'),
+      onPositionChange: pos => setHolidaysPanelPos(pos),
+    })
+    return () => dispose()
+  }, [showHolidaysModal])
 
-      <div style={{ marginTop: 18 }}>
-        <h2 style={{ margin: '0 0 10px 0', fontSize: 16 }}>Gráficos por módulo</h2>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 12 }}>
-          {[
-            { title: 'Férias', route: '/vacations', bars: moduleCharts.vacations },
-            { title: 'Viagens', route: '/trips', bars: moduleCharts.trips },
-            { title: 'Plantões', route: '/shifts/calendar', bars: moduleCharts.shifts },
-          ].map(module => {
-            const localMax = Math.max(1, ...module.bars.map(b => b.value))
-            return (
-              <button
-                key={module.title}
-                type="button"
-                onClick={() => router.push(module.route)}
-                style={{
-                  textAlign: 'left',
-                  background: PALETTE.backgroundSecondary,
-                  border: `1px solid ${PALETTE.border}`,
-                  borderRadius: 8,
-                  padding: 12,
-                  color: PALETTE.textPrimary,
-                  cursor: 'pointer',
-                }}
-              >
-                <div style={{ fontWeight: 700, marginBottom: 10 }}>{module.title}</div>
-                <div style={{ display: 'grid', gap: 8 }}>
-                  {module.bars.map(bar => (
-                    <div key={`${module.title}-${bar.label}`}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                        <span style={{ fontSize: 12, color: PALETTE.textSecondary }}>{bar.label}</span>
-                        <strong style={{ fontSize: 12 }}>{bar.value}</strong>
-                      </div>
-                      <div style={{ height: 8, borderRadius: 999, background: PALETTE.hoverBg, overflow: 'hidden' }}>
-                        <div style={{
-                          width: `${(bar.value / localMax) * 100}%`,
-                          height: '100%',
-                          background: bar.color,
-                          transition: 'width 240ms ease',
-                        }} />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </button>
-            )
-          })}
-        </div>
-      </div>
-
-      {showNotifications && notifPos && (
-        <div id="selection-notifications-popover" style={{ position: 'fixed', top: notifPos.top, left: notifPos.left, width: 420, zIndex: 2000 }}>
-          <div style={{
-            background: PALETTE.cardBg,
-            border: `1px solid ${PALETTE.border}`,
-            borderRadius: 12,
-            padding: 10,
-            boxShadow: '0 20px 60px rgba(2,6,23,0.18), 0 8px 24px rgba(2,6,23,0.12)',
-            maxHeight: '48vh',
-            overflowY: 'auto',
-          }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h3 style={{ margin: 0, fontSize: 16 }}>Ações Necessárias</h3>
-              <button type="button" onClick={() => setShowNotifications(false)} style={btnNav}>✕</button>
-            </div>
-            <div style={{ marginTop: 8, display: 'grid', gap: 8 }}>
-              {notifications.length === 0 && (
-                <div style={{ color: PALETTE.textSecondary }}>Nenhuma ação pendente no momento.</div>
-              )}
-              {notifications.map(item => (
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={() => { setShowNotifications(false); router.push(item.route) }}
-                  onMouseEnter={() => setHoveredNotif(item.id)}
-                  onMouseLeave={() => setHoveredNotif(null)}
-                  style={{
-                    textAlign: 'left',
-                    background: hoveredNotif === item.id ? `${PALETTE.primary}11` : PALETTE.cardBg,
-                    border: `1px solid ${item.severity === 'warning' ? `${PALETTE.warning}66` : PALETTE.border}`,
-                    borderRadius: 8,
-                    padding: 10,
-                    cursor: 'pointer',
-                    color: PALETTE.textPrimary,
-                  }}
-                >
-                  <div style={{ fontSize: 13, fontWeight: 700 }}>{item.label}</div>
-                  <div style={{ fontSize: 12, color: PALETTE.textSecondary, marginTop: 2 }}>{item.detail}</div>
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  )
+  
 
   if (embedded) {
     return (
       <div style={{ padding: 12, width: '100%', height: '100%', boxSizing: 'border-box' }}>
-        {panelContent}
+        <GeneralPanel
+          embedded={embedded}
+          minimized={minimized}
+          setMinimized={setMinimized}
+          focusedModal={focusedModal}
+          setFocusedModal={setFocusedModal}
+          loading={loading}
+          chartData={chartData}
+          moduleCharts={moduleCharts}
+          notifications={notifications}
+          onNavigate={(r) => router.push(r)}
+        />
       </div>
     )
   }
@@ -502,32 +317,160 @@ export default function SelectionPanel({ embedded = false }: { embedded?: boolea
       fontFamily: 'system-ui, sans-serif',
       color: PALETTE.textPrimary,
     }}>
-      {!minimized && panelContent}
+      {!minimized && (
+        <GeneralPanel
+          embedded={embedded}
+          minimized={minimized}
+          setMinimized={setMinimized}
+          focusedModal={focusedModal}
+          setFocusedModal={setFocusedModal}
+          loading={loading}
+          chartData={chartData}
+          moduleCharts={moduleCharts}
+          notifications={notifications}
+          onNavigate={(r) => router.push(r)}
+        />
+      )}
 
-      <button
-        type="button"
-        onClick={() => setMinimized(prev => !prev)}
-        title={minimized ? 'Abrir Painel Geral' : 'Minimizar/Restaurar Painel'}
-        style={{
-          position: 'fixed',
-          top: 50,
-          left: 320,
-          width: 56,
-          height: 56,
-          borderRadius: 6,
-          background: PALETTE.primary,
-          color: '#fff',
-          border: `1px solid ${PALETTE.border}`,
-          boxShadow: '0 6px 20px rgba(0,0,0,0.2)',
-          zIndex: 1100,
-          cursor: 'pointer',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}
-      >
-        📊
-      </button>
+      {!isGuest && showWorkersModal && (
+        <div
+          ref={workersPanelRef}
+          className="draggable-modal"
+          onPointerDown={() => setFocusedModal('workers')}
+          style={{
+            position: 'fixed',
+            top: workersPanelPos ? workersPanelPos.top : '50%',
+            left: workersPanelPos ? workersPanelPos.left : '50%',
+            transform: workersPanelPos ? 'none' : 'translate(-50%, -50%)',
+            width: 'min(640px, 86vw)',
+            background: PALETTE.cardBg,
+            border: `1px solid ${focusedModal === 'workers' ? PALETTE.primary : PALETTE.border}`,
+            borderRadius: 12,
+            padding: 16,
+            boxShadow: focusedModal === 'workers' ? '0 18px 60px rgba(0,0,0,0.55)' : '0 12px 40px rgba(0,0,0,0.45)',
+            maxHeight: '86vh',
+            overflowY: 'auto',
+            zIndex: focusedModal === 'workers' ? 1410 : 1310,
+          }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+            <div data-draggable-handle style={{ cursor: 'grab', flex: 1 }}>
+              <h3 style={{ margin: 0, fontSize: 16, color: PALETTE.textPrimary }}>Trabalhadores</h3>
+            </div>
+            <button type="button" onClick={() => setShowWorkersModal(false)} style={btnNav}>✕</button>
+          </div>
+          <WorkersContent onChange={() => {}} />
+        </div>
+      )}
+
+      {!isGuest && showHolidaysModal && (
+        <div
+          ref={holidaysPanelRef}
+          className="draggable-modal"
+          onPointerDown={() => setFocusedModal('holidays')}
+          style={{
+            position: 'fixed',
+            top: holidaysPanelPos ? holidaysPanelPos.top : '50%',
+            left: holidaysPanelPos ? holidaysPanelPos.left : '50%',
+            transform: holidaysPanelPos ? 'none' : 'translate(-50%, -50%)',
+            width: 'min(640px, 86vw)',
+            background: PALETTE.cardBg,
+            border: `1px solid ${focusedModal === 'holidays' ? PALETTE.primary : PALETTE.border}`,
+            borderRadius: 12,
+            padding: 16,
+            boxShadow: focusedModal === 'holidays' ? '0 18px 60px rgba(0,0,0,0.55)' : '0 12px 40px rgba(0,0,0,0.45)',
+            maxHeight: '86vh',
+            overflowY: 'auto',
+            zIndex: focusedModal === 'holidays' ? 1410 : 1310,
+          }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+            <div data-draggable-handle style={{ cursor: 'grab', flex: 1 }}>
+              <h3 style={{ margin: 0, fontSize: 16, color: PALETTE.textPrimary }}>Feriados</h3>
+            </div>
+            <button type="button" onClick={() => setShowHolidaysModal(false)} style={btnNav}>✕</button>
+          </div>
+          <HolidaysContent />
+        </div>
+      )}
+
+      <div style={{ position: 'fixed', top: 50, left: 300, zIndex: 1100, display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
+          <button
+            type="button"
+            onClick={() => setMinimized(prev => !prev)}
+            title={minimized ? 'Abrir Painel Geral' : 'Minimizar/Restaurar Painel'}
+            style={{
+              width: 56,
+              height: 56,
+              borderRadius: 6,
+              background: PALETTE.primary,
+              color: '#fff',
+              border: `1px solid ${PALETTE.border}`,
+              boxShadow: '0 6px 20px rgba(0,0,0,0.2)',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            📊
+          </button>
+          <div style={{ fontSize: 12, color: PALETTE.textSecondary }}>Painel Geral</div>
+        </div>
+
+        {!isGuest && (
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
+            <button
+              type="button"
+              onClick={() => { setShowWorkersModal(true) }}
+              title="Trabalhadores"
+              style={{
+                width: 56,
+                height: 56,
+                borderRadius: 6,
+                background: PALETTE.primary,
+                color: '#fff',
+                border: `1px solid ${PALETTE.border}`,
+                boxShadow: '0 6px 18px rgba(0,0,0,0.16)',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              👥
+            </button>
+            <div style={{ fontSize: 12, color: PALETTE.textSecondary }}>Trabalhadores</div>
+          </div>
+        )}
+
+        {!isGuest && (
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
+            <button
+              type="button"
+              onClick={() => { setShowHolidaysModal(true) }}
+              title="Feriados"
+              style={{
+                width: 56,
+                height: 56,
+                borderRadius: 6,
+                background: PALETTE.primary,
+                color: '#fff',
+                border: `1px solid ${PALETTE.border}`,
+                boxShadow: '0 6px 18px rgba(0,0,0,0.16)',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              📅
+            </button>
+            <div style={{ fontSize: 12, color: PALETTE.textSecondary }}>Feriados</div>
+          </div>
+        )}
+      </div>
     </main>
   )
 }

@@ -79,3 +79,19 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   width: 1.1rem;
   height: 1.1rem;
 }
+
+/* Draggable modal helpers */
+.draggable-modal {
+  position: fixed;
+  transform: none;
+  margin: 0;
+  box-sizing: border-box;
+  cursor: default;
+}
+.draggable-modal [data-draggable-handle] {
+  cursor: grab;
+  user-select: none;
+}
+.draggable-modal [data-draggable-handle]:active {
+  cursor: grabbing;
+}

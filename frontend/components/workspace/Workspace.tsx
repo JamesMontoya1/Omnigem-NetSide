@@ -6,9 +6,11 @@ type AppItem = { id: string; title: string; icon: string; route: string }
 
 export default function Workspace() {
   const apps: AppItem[] = [
-  { id: 'general', title: 'Painel Geral', icon: '📊', route: '/workspace' },
+    { id: 'general', title: 'Painel Geral', icon: '📊', route: '/workspace' },
     { id: 'trips', title: 'Viagens', icon: '🧭', route: '/trips' },
     { id: 'vacations', title: 'Férias', icon: '🏖️', route: '/vacations' },
+    { id: 'workers', title: 'Trabalhadores', icon: '👥', route: '/workers' },
+    { id: 'holidays', title: 'Feriados', icon: '📅', route: '/holidays' },
   ]
 
   const [openTabs, setOpenTabs] = useState<AppItem[]>([])

@@ -86,7 +86,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         <button
           onClick={() => setOpen(true)}
           aria-label="Abrir menu"
-          style={{ position: 'fixed', left: 12, top: 12, zIndex: 1200, ...btnSmall }}
+          style={{ position: 'fixed', left: 20, top: 12, zIndex: 1200, ...btnSmall, width: 32, height: 32, padding: 0 }}
         >
           ☰
         </button>
