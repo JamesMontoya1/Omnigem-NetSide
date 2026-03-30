@@ -4,8 +4,9 @@
   "private": true,
   "scripts": {
     "start:dev": "ts-node-dev --respawn --transpile-only src/main.ts",
-    "backup": "ts-node-dev --respawn --transpile-only scripts/backup.ts",
-    "restore": "ts-node-dev --respawn --transpile-only scripts/restore.ts",
+    "backup": "node scripts/run-ts-once.js backup",
+    "restore": "node scripts/run-ts-once.js restore",
+    "counts": "node scripts/run-ts-once.js counts",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/main.js",
     "prisma:generate": "prisma generate --schema=../prisma/schema.prisma",
