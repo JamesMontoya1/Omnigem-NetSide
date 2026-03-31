@@ -20,18 +20,64 @@ export function makeModalDraggable(modal: HTMLElement | null, options: MakeDragg
     const rect = modal.getBoundingClientRect()
     const computed = window.getComputedStyle(modal)
     if (computed.position === 'static') modal.style.position = 'fixed'
+
+    const maxLeft = Math.max(margin, window.innerWidth - rect.width - margin)
+    const maxTop = Math.max(margin, window.innerHeight - rect.height - margin)
+
+    let left: number
+    let top: number
     if (!modal.style.left && !modal.style.top) {
-      const left = Math.max(margin, (window.innerWidth - rect.width) / 2)
-      const top = Math.max(margin, (window.innerHeight - rect.height) / 2)
-      modal.style.left = `${Math.round(left)}px`
-      modal.style.top = `${Math.round(top)}px`
-      modal.style.transform = 'none'
+      left = Math.max(margin, (window.innerWidth - rect.width) / 2)
+      top = Math.max(margin, (window.innerHeight - rect.height) / 2)
     } else {
-      modal.style.transform = 'none'
+      left = Math.max(margin, Math.min(rect.left, maxLeft))
+      top = Math.max(margin, Math.min(rect.top, maxTop))
+    }
+
+    if (rect.width >= window.innerWidth - margin * 2) left = margin
+    if (rect.height >= window.innerHeight - margin * 2) top = margin
+
+    modal.style.left = `${Math.round(left)}px`
+    modal.style.top = `${Math.round(top)}px`
+    modal.style.transform = 'none'
+
+    const rectAfter = modal.getBoundingClientRect()
+    const overflowRight = rectAfter.right - (window.innerWidth - margin)
+    const overflowBottom = rectAfter.bottom - (window.innerHeight - margin)
+    if (overflowRight > 0) {
+      const adjLeft = Math.max(margin, (window.innerWidth - rectAfter.width - margin))
+      modal.style.left = `${Math.round(adjLeft)}px`
+    }
+    if (overflowBottom > 0) {
+      const adjTop = Math.max(margin, (window.innerHeight - rectAfter.height - margin))
+      modal.style.top = `${Math.round(adjTop)}px`
     }
   }
 
   ensurePositioning()
+  const initialRect = modal.getBoundingClientRect()
+  options.onPositionChange?.({ left: Math.round(initialRect.left), top: Math.round(initialRect.top) })
+
+  function onWindowResize() {
+    ensurePositioning()
+    const r = modal.getBoundingClientRect()
+    options.onPositionChange?.({ left: Math.round(r.left), top: Math.round(r.top) })
+  }
+  window.addEventListener('resize', onWindowResize)
+
+  let resizeObserver: ResizeObserver | null = null
+  if (typeof ResizeObserver !== 'undefined') {
+    try {
+      resizeObserver = new ResizeObserver(() => {
+        ensurePositioning()
+        const r = modal.getBoundingClientRect()
+        options.onPositionChange?.({ left: Math.round(r.left), top: Math.round(r.top) })
+      })
+      resizeObserver.observe(modal)
+    } catch (e) {
+      resizeObserver = null
+    }
+  }
 
   let dragging: {
     startX: number
@@ -155,6 +201,8 @@ export function makeModalDraggable(modal: HTMLElement | null, options: MakeDragg
     listeners.forEach(l => l.el.removeEventListener('pointerdown', l.fn))
     document.removeEventListener('pointermove', onPointerMove)
     document.removeEventListener('pointerup', onPointerUp)
+    window.removeEventListener('resize', onWindowResize)
+    if (resizeObserver) resizeObserver.disconnect()
     disposers.delete(modal)
   }
 

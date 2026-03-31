@@ -118,12 +118,19 @@ export default function CalendarPage() {
   const [tab, setTab] = useState<Tab>('panel')
 
   const loadWorkers = useCallback(async () => {
-    try { const r = await fetch(`${API}/workers`); setWorkers(await r.json()); } catch { setWorkers([]); }
+    try {
+      const r = await fetch(`${API}/workers`, { headers: authHeaders() })
+      if (!r.ok) throw new Error('workers')
+      setWorkers(await r.json())
+    } catch {
+      setWorkers([])
+    }
   }, []);
 
   const loadRotations = useCallback(async () => {
     try {
-      const r = await fetch(`${API}/rotations`);
+      const r = await fetch(`${API}/rotations`, { headers: authHeaders() });
+      if (!r.ok) throw new Error('rotations')
       const data = await r.json();
       data.sort((a: Rotation, b: Rotation) => {
         const ta = a.startDate ? new Date(a.startDate).getTime() : 0;
@@ -142,14 +149,17 @@ export default function CalendarPage() {
     const s = toISO(gridStart);
     const e = toISO(gridEnd);
     try {
-      const r = await fetch(`${API}/rotations/calendar?startDate=${s}&endDate=${e}`);
+      const r = await fetch(`${API}/rotations/calendar?startDate=${s}&endDate=${e}`, { headers: authHeaders() });
+      if (!r.ok) return
       const fetched = await r.json();
       setCalendar(prev => ({ ...prev, ...fetched }));
     } catch {
     }
   }, []);
 
-  useEffect(() => { loadWorkers(); loadRotations(); }, []);
+  useEffect(() => {
+    Promise.all([loadWorkers(), loadRotations()]).catch(() => {})
+  }, []);
   useEffect(() => { loadCalendar(viewDate); }, [viewDate, loadCalendar]);
 
   const upcomingNotifiedThisWeek = useMemo(() => {

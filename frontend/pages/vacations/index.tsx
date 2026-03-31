@@ -283,16 +283,22 @@ export default function VacationsPage() {
 
   async function load() {
     try {
-      const [wRes, vRes, sRes] = await Promise.all([
-        fetch(`${API_BASE}/workers`),
-        fetch(`${API_BASE}/vacations`),
-        fetch(`${API_BASE}/vacations/summary`),
-        fetch(`${API_BASE}/holidays`),
+      const [wRes, vRes, sRes, hRes] = await Promise.all([
+        fetch(`${API_BASE}/workers`, { headers: authHeaders() }),
+        fetch(`${API_BASE}/vacations`, { headers: authHeaders() }),
+        fetch(`${API_BASE}/vacations/summary`, { headers: authHeaders() }),
+        fetch(`${API_BASE}/holidays`, { headers: authHeaders() }),
       ])
+
+      if (!wRes.ok) throw new Error('Erro ao carregar trabalhadores')
+      if (!vRes.ok) throw new Error('Erro ao carregar férias')
+      if (!sRes.ok) throw new Error('Erro ao carregar resumo de férias')
+      if (!hRes.ok) throw new Error('Erro ao carregar feriados')
+
       setWorkers(await wRes.json())
       setVacations(await vRes.json())
       setSummary(await sRes.json())
-      try { const hRes = await fetch(`${API_BASE}/holidays`); setHolidays(await hRes.json()) } catch (e) { console.error('holidays load', e) }
+      setHolidays(await hRes.json())
     } catch (e) { console.error(e) }
   }
 

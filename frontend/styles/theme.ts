@@ -3,6 +3,7 @@ export const PALETTE = {
   // fundos
   background: '#1A1D21',
   backgroundSecondary: '#20242A',
+  backgroundGradient: 'linear-gradient(180deg, #1A1D21 0%, #3A5A8A 100%)',
   cardBg: '#2A2F36',
   hoverBg: '#323844',
   rowHover: '#3B4756',

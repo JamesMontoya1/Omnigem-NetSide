@@ -80,7 +80,28 @@ export class VacationsService {
   async summary() {
     const workers = await this.prisma.worker.findMany({
       where: { active: true, dontVacation: false },
-      include: { vacations: true },
+      select: {
+        id: true,
+        name: true,
+        color: true,
+        hireDate: true,
+        terminationDate: true,
+        vacations: {
+          where: { active: true, NOT: { request: 2 } },
+          select: {
+            id: true,
+            workerId: true,
+            startDate: true,
+            endDate: true,
+            daysUsed: true,
+            sold: true,
+            active: true,
+            note: true,
+            request: true,
+          },
+          orderBy: { startDate: 'asc' },
+        },
+      },
       orderBy: { name: 'asc' },
     });
 
@@ -98,14 +119,12 @@ export class VacationsService {
       const totalEarned = yearsWorked * 30;
 
       const totalUsed = w.vacations
-        .filter(v => v.active && v.request !== 2 && new Date(v.startDate) <= today)
+        .filter(v => new Date(v.startDate) <= today)
         .reduce((sum, v) => sum + v.daysUsed, 0);
 
       const pendingDays = totalEarned - totalUsed;
 
-      const upcoming = w.vacations
-        .filter(v => v.active && v.request !== 2 && new Date(v.startDate) > today)
-        .sort((a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime());
+      const upcoming = w.vacations.filter(v => new Date(v.startDate) > today);
 
       return {
         id: w.id,

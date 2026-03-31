@@ -15,13 +15,74 @@ export class TripsService {
     }
     return this.prisma.trip.findMany({
       where,
-      include: { tripCities: { include: { city: true } }, vehicle: true, travelers: true, drivers: true, serviceType: true },
+      include: {
+        tripCities: {
+          select: {
+            id: true,
+            tripId: true,
+            cityId: true,
+            clients: true,
+            prices: true,
+            information: true,
+            notes: true,
+            city: { select: { id: true, name: true, state: true, country: true } },
+          },
+        },
+        vehicle: {
+          select: {
+            id: true,
+            plate: true,
+            model: true,
+            notes: true,
+            odometer: true,
+            nextOilChange: true,
+            lastAlignment: true,
+            odometerAtLastAlignment: true,
+            lastMaintenance: true,
+          },
+        },
+        travelers: { select: { id: true, name: true, doesTravel: true, active: true } },
+        drivers: { select: { id: true, name: true, doesTravel: true, active: true } },
+        serviceType: { select: { id: true, name: true, code: true } },
+      },
       orderBy: { date: 'desc' },
     } as any)
   }
 
   async get(id: number) {
-    return this.prisma.trip.findUnique({ where: { id }, include: { tripCities: { include: { city: true } }, vehicle: true, travelers: true, drivers: true, serviceType: true } } as any)
+    return this.prisma.trip.findUnique({
+      where: { id },
+      include: {
+        tripCities: {
+          select: {
+            id: true,
+            tripId: true,
+            cityId: true,
+            clients: true,
+            prices: true,
+            information: true,
+            notes: true,
+            city: { select: { id: true, name: true, state: true, country: true } },
+          },
+        },
+        vehicle: {
+          select: {
+            id: true,
+            plate: true,
+            model: true,
+            notes: true,
+            odometer: true,
+            nextOilChange: true,
+            lastAlignment: true,
+            odometerAtLastAlignment: true,
+            lastMaintenance: true,
+          },
+        },
+        travelers: { select: { id: true, name: true, doesTravel: true, active: true } },
+        drivers: { select: { id: true, name: true, doesTravel: true, active: true } },
+        serviceType: { select: { id: true, name: true, code: true } },
+      },
+    } as any)
   }
 
   async create(data: any) {
@@ -152,18 +213,19 @@ export class TripsService {
       delete payload.driverIds
     }
     if (citiesPayload.length) {
-      await this.prisma.tripCity.deleteMany({ where: { tripId: id } })
-      const tripCitiesCreates = citiesPayload.map(c => ({
-        tripId: id,
-        cityId: c.cityId,
-        clients: c.clients.map((x: any) => x.name ?? ''),
-        prices: c.clients.map((x: any) => (x.price != null ? x.price : 0)),
-        information: c.clients.map((x: any) => x.info ?? ''),
-        notes: c.notes ?? null,
-      }))
-      for (const tc of tripCitiesCreates) {
-        await this.prisma.tripCity.create({ data: tc })
-      }
+      await this.prisma.$transaction(async prisma => {
+        await prisma.tripCity.deleteMany({ where: { tripId: id } })
+        await prisma.tripCity.createMany({
+          data: citiesPayload.map(c => ({
+            tripId: id,
+            cityId: c.cityId,
+            clients: c.clients.map((x: any) => x.name ?? ''),
+            prices: c.clients.map((x: any) => (x.price != null ? x.price : 0)),
+            information: c.clients.map((x: any) => x.info ?? ''),
+            notes: c.notes ?? null,
+          })),
+        })
+      })
     }
 
     if (payload.fuelExpense != null) {
