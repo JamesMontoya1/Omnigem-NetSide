@@ -7,6 +7,9 @@ import HolidaysContent from '../shared/HolidaysContent'
 import GeneralPanel from './GeneralPanel'
 import { makeModalDraggable } from '../shared/draggableModal'
 
+const WORKERS_POS_KEY = 'selection_workers_panel_pos_v1'
+const HOLIDAYS_POS_KEY = 'selection_holidays_panel_pos_v1'
+
 type Vacation = { id: number; request?: number | null }
 type Trip = { id: number; date: string; completed?: boolean }
 type Vehicle = { id: number; model?: string; plate?: string; nextOilChange?: string | null; lastMaintenance?: string | null; lastAlignment?: string | null }
@@ -47,11 +50,11 @@ export default function SelectionPanel({ embedded = false }: { embedded?: boolea
   const router = useRouter()
   
   const [loading, setLoading] = useState(true)
-  const [minimized, setMinimized] = useState<boolean>(() => !embedded)
+  const [isGuest, setIsGuest] = useState(false)
   const [showWorkersModal, setShowWorkersModal] = useState(false)
   const [showHolidaysModal, setShowHolidaysModal] = useState(false)
+  const [minimized, setMinimized] = useState<boolean>(() => !embedded)
   const [focusedModal, setFocusedModal] = useState<'workers' | 'holidays' | 'panel' | null>(null)
-  const [isGuest, setIsGuest] = useState(false)
 
   const workersPanelRef = useRef<HTMLDivElement | null>(null)
   const [workersPanelPos, setWorkersPanelPos] = useState<{ top: number; left: number } | null>(null)
@@ -59,12 +62,12 @@ export default function SelectionPanel({ embedded = false }: { embedded?: boolea
   const holidaysPanelRef = useRef<HTMLDivElement | null>(null)
   const [holidaysPanelPos, setHolidaysPanelPos] = useState<{ top: number; left: number } | null>(null)
 
-  const [vacations, setVacations] = useState<Vacation[]>([])
   const [trips, setTrips] = useState<Trip[]>([])
   const [vehicles, setVehicles] = useState<Vehicle[]>([])
+  const [vacations, setVacations] = useState<Vacation[]>([])
   const [rotations, setRotations] = useState<Rotation[]>([])
-  const [maintenanceInterval, setMaintenanceInterval] = useState(60)
   const [alignmentInterval, setAlignmentInterval] = useState(60)
+  const [maintenanceInterval, setMaintenanceInterval] = useState(60)
 
   useEffect(() => {
     ;(async () => {
@@ -103,6 +106,18 @@ export default function SelectionPanel({ embedded = false }: { embedded?: boolea
       setIsGuest(Array.isArray(roles) && roles.includes('GUEST'))
     } catch (e) {
       setIsGuest(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    try {
+      const wp = localStorage.getItem(WORKERS_POS_KEY)
+      if (wp) setWorkersPanelPos(JSON.parse(wp))
+      const hp = localStorage.getItem(HOLIDAYS_POS_KEY)
+      if (hp) setHolidaysPanelPos(JSON.parse(hp))
+    } catch (e) {
+      // ignore
     }
   }, [])
 
@@ -242,26 +257,48 @@ export default function SelectionPanel({ embedded = false }: { embedded?: boolea
 
   useEffect(() => {
     if (!showWorkersModal) return
-    if (!workersPanelRef.current) return
-    if (workersPanelPos) return
-    const rect = workersPanelRef.current.getBoundingClientRect()
-    setWorkersPanelPos({
-      top: Math.max(8, (window.innerHeight - rect.height) / 2),
-      left: Math.max(8, (window.innerWidth - rect.width) / 2),
-    })
     setFocusedModal('workers')
+    if (!workersPanelRef.current) return
+    const rect = workersPanelRef.current.getBoundingClientRect()
+    const margin = 8
+    const maxLeft = Math.max(margin, window.innerWidth - rect.width - margin)
+    const maxTop = Math.max(margin, window.innerHeight - rect.height - margin)
+    if (!workersPanelPos) {
+      let left = Math.max(margin, (window.innerWidth - rect.width) / 2)
+      let top = Math.max(margin, (window.innerHeight - rect.height) / 2)
+      left = Math.round(Math.max(margin, Math.min(left, maxLeft)))
+      top = Math.round(Math.max(margin, Math.min(top, maxTop)))
+      setWorkersPanelPos({ top, left })
+    } else {
+      let left = Math.round(Math.max(margin, Math.min(workersPanelPos.left, maxLeft)))
+      let top = Math.round(Math.max(margin, Math.min(workersPanelPos.top, maxTop)))
+      if (left !== workersPanelPos.left || top !== workersPanelPos.top) {
+        setWorkersPanelPos({ top, left })
+      }
+    }
   }, [showWorkersModal, workersPanelPos])
 
   useEffect(() => {
     if (!showHolidaysModal) return
-    if (!holidaysPanelRef.current) return
-    if (holidaysPanelPos) return
-    const rect = holidaysPanelRef.current.getBoundingClientRect()
-    setHolidaysPanelPos({
-      top: Math.max(8, (window.innerHeight - rect.height) / 2),
-      left: Math.max(8, (window.innerWidth - rect.width) / 2),
-    })
     setFocusedModal('holidays')
+    if (!holidaysPanelRef.current) return
+    const rect = holidaysPanelRef.current.getBoundingClientRect()
+    const margin = 8
+    const maxLeft = Math.max(margin, window.innerWidth - rect.width - margin)
+    const maxTop = Math.max(margin, window.innerHeight - rect.height - margin)
+    if (!holidaysPanelPos) {
+      let left = Math.max(margin, (window.innerWidth - rect.width) / 2)
+      let top = Math.max(margin, (window.innerHeight - rect.height) / 2)
+      left = Math.round(Math.max(margin, Math.min(left, maxLeft)))
+      top = Math.round(Math.max(margin, Math.min(top, maxTop)))
+      setHolidaysPanelPos({ top, left })
+    } else {
+      let left = Math.round(Math.max(margin, Math.min(holidaysPanelPos.left, maxLeft)))
+      let top = Math.round(Math.max(margin, Math.min(holidaysPanelPos.top, maxTop)))
+      if (left !== holidaysPanelPos.left || top !== holidaysPanelPos.top) {
+        setHolidaysPanelPos({ top, left })
+      }
+    }
   }, [showHolidaysModal, holidaysPanelPos])
 
   useEffect(() => {
@@ -286,11 +323,38 @@ export default function SelectionPanel({ embedded = false }: { embedded?: boolea
     return () => dispose()
   }, [showHolidaysModal])
 
+  useEffect(() => {
+    if (!workersPanelPos) return
+    try {
+      localStorage.setItem(WORKERS_POS_KEY, JSON.stringify(workersPanelPos))
+    } catch (e) {
+      // ignore
+    }
+  }, [workersPanelPos])
+
+  useEffect(() => {
+    if (!holidaysPanelPos) return
+    try {
+      localStorage.setItem(HOLIDAYS_POS_KEY, JSON.stringify(holidaysPanelPos))
+    } catch (e) {
+      // ignore
+    }
+  }, [holidaysPanelPos])
+
   
 
   if (embedded) {
     return (
-      <div style={{ padding: 12, width: '100%', height: '100%', boxSizing: 'border-box' }}>
+      <div
+        style={{
+          padding: 12,
+          width: '100%',
+          height: '100vh',
+          boxSizing: 'border-box',
+            background: PALETTE.backgroundGradient,
+          display: 'flex',
+        }}
+      >
         <GeneralPanel
           embedded={embedded}
           minimized={minimized}
@@ -313,7 +377,7 @@ export default function SelectionPanel({ embedded = false }: { embedded?: boolea
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      backgroundColor: PALETTE.background,
+      background: PALETTE.backgroundGradient,
       fontFamily: 'system-ui, sans-serif',
       color: PALETTE.textPrimary,
     }}>
@@ -394,7 +458,7 @@ export default function SelectionPanel({ embedded = false }: { embedded?: boolea
         </div>
       )}
 
-      <div style={{ position: 'fixed', top: 50, left: 300, zIndex: 1100, display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+      <div style={{ position: 'fixed', top: 50, left: 300, zIndex: 1100, display: 'flex', gap: 20, alignItems: 'flex-start' }}>
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
           <button
             type="button"
@@ -404,14 +468,15 @@ export default function SelectionPanel({ embedded = false }: { embedded?: boolea
               width: 56,
               height: 56,
               borderRadius: 6,
-              background: PALETTE.primary,
-              color: '#fff',
-              border: `1px solid ${PALETTE.border}`,
-              boxShadow: '0 6px 20px rgba(0,0,0,0.2)',
+              background: 'transparent',
+              color: PALETTE.textPrimary,
+              border: 'none',
+              boxShadow: 'none',
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
+              fontSize: 28,
             }}
           >
             📊
@@ -429,14 +494,15 @@ export default function SelectionPanel({ embedded = false }: { embedded?: boolea
                 width: 56,
                 height: 56,
                 borderRadius: 6,
-                background: PALETTE.primary,
-                color: '#fff',
-                border: `1px solid ${PALETTE.border}`,
-                boxShadow: '0 6px 18px rgba(0,0,0,0.16)',
+                background: 'transparent',
+                color: PALETTE.textPrimary,
+                border: 'none',
+                boxShadow: 'none',
                 cursor: 'pointer',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
+                fontSize: 28,
               }}
             >
               👥
@@ -455,14 +521,15 @@ export default function SelectionPanel({ embedded = false }: { embedded?: boolea
                 width: 56,
                 height: 56,
                 borderRadius: 6,
-                background: PALETTE.primary,
-                color: '#fff',
-                border: `1px solid ${PALETTE.border}`,
-                boxShadow: '0 6px 18px rgba(0,0,0,0.16)',
+                background: 'transparent',
+                color: PALETTE.textPrimary,
+                border: 'none',
+                boxShadow: 'none',
                 cursor: 'pointer',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
+                fontSize: 28,
               }}
             >
               📅

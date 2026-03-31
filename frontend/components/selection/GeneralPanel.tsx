@@ -70,6 +70,9 @@ export default function GeneralPanel(props: {
   const isPanelFocused = focusedModal === 'panel'
   const basePanelStyle: any = {
     width: embedded ? '100%' : 'min(760px, 86vw)',
+    height: embedded ? '100%' : undefined,
+    minHeight: embedded ? '100%' : undefined,
+    boxSizing: 'border-box',
     background: PALETTE.cardBg,
     border: `1px solid ${isPanelFocused ? PALETTE.primary : PALETTE.border}`,
     borderRadius: 12,
