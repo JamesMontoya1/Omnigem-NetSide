@@ -2266,10 +2266,6 @@ export default function Trips() {
                   <label style={labelStyle}>Estado</label>
                   <input value={cityForm.state} onChange={e => setCityForm({ ...cityForm, state: e.target.value })} style={inputStyle} placeholder="Ex: SP" />
                 </div>
-                <div>
-                  <label style={labelStyle}>País</label>
-                  <input value={cityForm.country} onChange={e => setCityForm({ ...cityForm, country: e.target.value })} style={inputStyle} />
-                </div>
               </div>
               <div style={{ marginTop: 14, display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
                 <button type="button" onClick={() => setShowCityModal(false)} style={btnCancel as any}>Cancelar</button>
