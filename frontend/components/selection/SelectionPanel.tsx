@@ -54,7 +54,7 @@ export default function SelectionPanel({ embedded = false }: { embedded?: boolea
   const [showWorkersModal, setShowWorkersModal] = useState(false)
   const [showHolidaysModal, setShowHolidaysModal] = useState(false)
   const [minimized, setMinimized] = useState<boolean>(() => !embedded)
-  const [focusedModal, setFocusedModal] = useState<'workers' | 'holidays' | 'panel' | null>(null)
+  
 
   const workersPanelRef = useRef<HTMLDivElement | null>(null)
   const [workersPanelPos, setWorkersPanelPos] = useState<{ top: number; left: number } | null>(null)
@@ -474,7 +474,6 @@ export default function SelectionPanel({ embedded = false }: { embedded?: boolea
 
   useEffect(() => {
     if (!showWorkersModal) return
-    setFocusedModal('workers')
     if (!workersPanelRef.current) return
     const rect = workersPanelRef.current.getBoundingClientRect()
     const margin = 8
@@ -497,7 +496,6 @@ export default function SelectionPanel({ embedded = false }: { embedded?: boolea
 
   useEffect(() => {
     if (!showHolidaysModal) return
-    setFocusedModal('holidays')
     if (!holidaysPanelRef.current) return
     const rect = holidaysPanelRef.current.getBoundingClientRect()
     const margin = 8
@@ -523,7 +521,6 @@ export default function SelectionPanel({ embedded = false }: { embedded?: boolea
     if (!workersPanelRef.current) return
     const dispose = makeModalDraggable(workersPanelRef.current, {
       handleSelector: '[data-draggable-handle], h3',
-      onFocus: () => setFocusedModal('workers'),
       onPositionChange: pos => setWorkersPanelPos(pos),
     })
     return () => dispose()
@@ -534,7 +531,6 @@ export default function SelectionPanel({ embedded = false }: { embedded?: boolea
     if (!holidaysPanelRef.current) return
     const dispose = makeModalDraggable(holidaysPanelRef.current, {
       handleSelector: '[data-draggable-handle], h3',
-      onFocus: () => setFocusedModal('holidays'),
       onPositionChange: pos => setHolidaysPanelPos(pos),
     })
     return () => dispose()
@@ -576,8 +572,6 @@ export default function SelectionPanel({ embedded = false }: { embedded?: boolea
           embedded={embedded}
           minimized={minimized}
           setMinimized={setMinimized}
-          focusedModal={focusedModal}
-          setFocusedModal={setFocusedModal}
           loading={loading}
           chartData={chartData}
           moduleCharts={moduleCharts}
@@ -607,8 +601,6 @@ export default function SelectionPanel({ embedded = false }: { embedded?: boolea
           embedded={embedded}
           minimized={minimized}
           setMinimized={setMinimized}
-          focusedModal={focusedModal}
-          setFocusedModal={setFocusedModal}
           loading={loading}
           chartData={chartData}
           moduleCharts={moduleCharts}
@@ -625,7 +617,6 @@ export default function SelectionPanel({ embedded = false }: { embedded?: boolea
         <div
           ref={workersPanelRef}
           className="draggable-modal"
-          onPointerDown={() => setFocusedModal('workers')}
           style={{
             position: 'fixed',
             top: workersPanelPos ? workersPanelPos.top : '50%',
@@ -633,13 +624,13 @@ export default function SelectionPanel({ embedded = false }: { embedded?: boolea
             transform: workersPanelPos ? 'none' : 'translate(-50%, -50%)',
             width: 'min(640px, 86vw)',
             background: PALETTE.cardBg,
-            border: `1px solid ${focusedModal === 'workers' ? PALETTE.primary : PALETTE.border}`,
+            border: `1px solid ${PALETTE.border}`,
             borderRadius: 12,
             padding: 16,
-            boxShadow: focusedModal === 'workers' ? '0 18px 60px rgba(0,0,0,0.55)' : '0 12px 40px rgba(0,0,0,0.45)',
+            boxShadow: '0 12px 40px rgba(0,0,0,0.45)',
             maxHeight: '86vh',
             overflowY: 'auto',
-            zIndex: focusedModal === 'workers' ? 1410 : 1310,
+            zIndex: 1610,
           }}
         >
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
@@ -656,7 +647,6 @@ export default function SelectionPanel({ embedded = false }: { embedded?: boolea
         <div
           ref={holidaysPanelRef}
           className="draggable-modal"
-          onPointerDown={() => setFocusedModal('holidays')}
           style={{
             position: 'fixed',
             top: holidaysPanelPos ? holidaysPanelPos.top : '50%',
@@ -664,13 +654,13 @@ export default function SelectionPanel({ embedded = false }: { embedded?: boolea
             transform: holidaysPanelPos ? 'none' : 'translate(-50%, -50%)',
             width: 'min(640px, 86vw)',
             background: PALETTE.cardBg,
-            border: `1px solid ${focusedModal === 'holidays' ? PALETTE.primary : PALETTE.border}`,
+            border: `1px solid ${PALETTE.border}`,
             borderRadius: 12,
             padding: 16,
-            boxShadow: focusedModal === 'holidays' ? '0 18px 60px rgba(0,0,0,0.55)' : '0 12px 40px rgba(0,0,0,0.45)',
+            boxShadow: '0 12px 40px rgba(0,0,0,0.45)',
             maxHeight: '86vh',
             overflowY: 'auto',
-            zIndex: focusedModal === 'holidays' ? 1410 : 1310,
+            zIndex: 1610,
           }}
         >
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>

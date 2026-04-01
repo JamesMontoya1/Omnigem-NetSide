@@ -13,8 +13,6 @@ export default function GeneralPanel(props: {
   embedded?: boolean
   minimized: boolean
   setMinimized: (v: boolean) => void
-  focusedModal: 'workers' | 'holidays' | 'panel' | null
-  setFocusedModal: (m: 'workers' | 'holidays' | 'panel' | null) => void
   loading: boolean
   chartData: ChartItem[]
   moduleCharts: { vacations: ChartBar[]; trips: ChartBar[]; shifts: ChartBar[] }
@@ -25,7 +23,7 @@ export default function GeneralPanel(props: {
   upcomingShifts?: UpcomingShift[]
   onNavigate: (route: string) => void
 }) {
-  const { embedded, minimized, setMinimized, focusedModal, setFocusedModal, loading, chartData, moduleCharts, notifications, inconsistentCount, upcomingVacations, onNavigate } = props
+  const { embedded, minimized, setMinimized, loading, chartData, moduleCharts, notifications, inconsistentCount, upcomingVacations, onNavigate } = props
   const upcomingTrips = (props as any).upcomingTrips as UpcomingTrip[] | undefined
   const upcomingShifts = (props as any).upcomingShifts as UpcomingShift[] | undefined
 
@@ -57,11 +55,10 @@ export default function GeneralPanel(props: {
     if (!el) return
     const dispose = makeModalDraggable(el, {
       handleSelector: '[data-draggable-handle], h1',
-      onFocus: () => setFocusedModal('panel'),
       onPositionChange: pos => setPanelPos(pos),
     })
     return () => dispose()
-  }, [embedded, setFocusedModal])
+  }, [embedded])
 
   useEffect(() => {
     if (embedded) return
@@ -77,18 +74,17 @@ export default function GeneralPanel(props: {
   const maxValue = Math.max(1, ...chartData.map(i => i.value))
   const totalNotifications = notifications.length
 
-  const isPanelFocused = focusedModal === 'panel'
   const basePanelStyle: any = {
     width: embedded ? '100%' : 'min(760px, 86vw)',
     height: embedded ? '100%' : undefined,
     minHeight: embedded ? '100%' : undefined,
     boxSizing: 'border-box',
     background: PALETTE.cardBg,
-    border: `1px solid ${isPanelFocused ? PALETTE.primary : PALETTE.border}`,
+    border: `1px solid ${PALETTE.border}`,
     borderRadius: 12,
     padding: 20,
-    boxShadow: isPanelFocused ? '0 18px 60px rgba(0,0,0,0.55)' : '0 10px 35px rgba(0,0,0,0.25)',
-    zIndex: isPanelFocused ? 1510 : 1200,
+    boxShadow: '0 10px 35px rgba(0,0,0,0.25)',
+    zIndex: 1200,
   }
   if (!embedded) {
     basePanelStyle.position = 'fixed'
@@ -143,7 +139,7 @@ export default function GeneralPanel(props: {
   }
 
   return (
-    <div ref={panelRef} className="draggable-modal" onPointerDown={() => setFocusedModal('panel')} style={basePanelStyle}>
+    <div ref={panelRef} className="draggable-modal" style={basePanelStyle}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
         <h1 data-draggable-handle style={{ margin: 0, fontSize: 22, flex: 1, cursor: embedded ? 'default' : 'grab', userSelect: 'none' }}>Painel Geral</h1>
         <button

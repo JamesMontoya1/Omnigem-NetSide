@@ -172,6 +172,43 @@ function Sidebar({ open, onClose, persistent = false, onOpenWorkers, onOpenHolid
       </nav>
 
       <div style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <div style={{ display: 'inline-flex', flexDirection: 'column', gap: 8 }}>
+          <button
+            type="button"
+            onClick={() => {
+              if (onOpenWorkers) {
+                onOpenWorkers()
+                if (!persistent) onClose()
+              } else {
+                nav('/users')
+              }
+            }}
+            style={{ ...btnSmall, textAlign: 'left', fontSize: 15 }}
+          >
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+              <IconUsers style={iconStyle} />
+              Trabalhadores
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              if (onOpenHolidays) {
+                onOpenHolidays()
+                if (!persistent) onClose()
+              } else {
+                nav('/vacations')
+              }
+            }}
+            style={{ ...btnSmall, textAlign: 'left', fontSize: 15 }}
+          >
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+              <IconCalendar style={iconStyle} />
+              Feriados
+            </span>
+          </button>
+        </div>
 
         <div style={{ display: 'flex', gap: 8 }}>
           {!isWorkspace && (
