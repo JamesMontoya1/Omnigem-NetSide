@@ -40,6 +40,7 @@ model Worker {
 
   positionId        Int?
   position          Position? @relation("Positions", fields: [positionId], references: [id])
+  timePunches       TimePunch[]
   user              User?     @relation("WorkerUser")
   recurringPatterns RecurringPattern[]
   assignments       Assignment[]
@@ -115,11 +116,11 @@ model Vacation {
   worker    Worker   @relation(fields: [workerId], references: [id])
   startDate DateTime // Data de início das férias
   endDate   DateTime // Data final das férias
-  daysUsed  Int      // Dias usados (máx 30 por período aquisitivo)
+  daysUsed  Int      // Dias usados
   sold      Boolean  @default(false) // Vendeu férias?
   active    Boolean  @default(true)  // Lançamento ativo?
   note      String?  // Observações
-
+  
   request   Int?      // 0 - Solicitação; 1 - Aprovado; 2 - Rejeitado; se for = null, é lançado como aprovado (para não precisar aprovar cada lançamento antigo)
   createdAt DateTime @default(now())
 }
@@ -267,4 +268,39 @@ model Trip {
   updatedAt            DateTime @updatedAt
 
   tripCities           TripCity[]
+}
+
+enum TimePunchType {
+  IN
+  OUT
+  BREAK_START
+  BREAK_END
+}
+
+enum TimePunchSource {
+  MANUAL
+  IMPORT_CSV
+  PONTOSIMPLES
+}
+
+model TimePunch {
+  id         Int             @id @default(autoincrement())
+  workerId   Int
+  worker     Worker          @relation(fields: [workerId], references: [id])
+
+  occurredAt DateTime
+  type       TimePunchType
+  source     TimePunchSource @default(MANUAL)
+
+  // Identificador do evento no sistema de origem (quando importar/sincronizar)
+  externalId String?
+
+  // Payload bruto/extra (útil para auditoria e troubleshooting)
+  raw        Json?
+
+  createdAt  DateTime        @default(now())
+
+  @@index([workerId, occurredAt])
+  @@index([source, externalId])
+  @@unique([source, externalId])
 }

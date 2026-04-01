@@ -12,6 +12,7 @@ import HolidaysContent from '../../components/shared/HolidaysContent'
 type Worker = {
   id: number; name: string; color?: string; active: boolean;
   hireDate?: string; terminationDate?: string;
+  dontVacation?: boolean
 }
 
 type Vacation = {
@@ -446,51 +447,21 @@ export default function VacationsPage() {
     .filter(s => s.pendingDays !== 0)
     .slice()
     .sort((a, b) => (b.pendingDays || 0) - (a.pendingDays || 0))
-  const upcomingAll = filteredSummary.flatMap(s => s.upcoming.filter(v => !v.sold).map(v => ({ ...v, workerName: s.name, workerColor: s.color })))
-    .sort((a, b) => parseLocalDate(a.startDate.slice(0, 10)).getTime() - parseLocalDate(b.startDate.slice(0, 10)).getTime())
-    .slice(0, 10)
-  const baseFilteredVacations = (filterWorkerId ? vacations.filter(v => v.workerId === filterWorkerId) : vacations)
-    .slice().sort((a, b) => parseLocalDate(b.startDate.slice(0, 10)).getTime() - parseLocalDate(a.startDate.slice(0, 10)).getTime())
-
-  const displayedVacations = baseFilteredVacations.filter(v => {
-    if (v.request === 2) return false
-    if (filterActiveStatus === 'active' && !v.active) return false
-    if (filterActiveStatus === 'inactive' && v.active) return false
-
-    if (filterSoldStatus === 'sold' && !v.sold) return false
-    if (filterSoldStatus === 'not_sold' && v.sold) return false
-
-    if (filterMinDays !== '' && Number(v.daysUsed) < Number(filterMinDays)) return false
-    if (filterMaxDays !== '' && Number(v.daysUsed) > Number(filterMaxDays)) return false
-
-    if (filterStartDate) {
-      const fStart = isoDate(parseLocalDate(filterStartDate))
-      const vEnd = isoDate(parseLocalDate(v.endDate.slice(0, 10)))
-      if (vEnd < fStart) return false
-    }
-    if (filterEndDate) {
-      const fEnd = isoDate(parseLocalDate(filterEndDate))
-      const vStart = isoDate(parseLocalDate(v.startDate.slice(0, 10)))
-      if (vStart > fEnd) return false
-    }
-
-    if (filterSearchText) {
-      const text = filterSearchText.toLowerCase()
-      if (filterSearchField === 'worker') {
-        const w = workers.find(x => x.id === v.workerId)
-        if (!w || !w.name.toLowerCase().includes(text)) return false
-      } else if (filterSearchField === 'note') {
-        if (!v.note || !v.note.toLowerCase().includes(text)) return false
-      } else {
-        const w = workers.find(x => x.id === v.workerId)
-        const wn = w ? w.name.toLowerCase() : ''
-        const nn = v.note ? v.note.toLowerCase() : ''
-        if (!wn.includes(text) && !nn.includes(text)) return false
+  const todayStart = new Date(new Date().getFullYear(), new Date().getMonth(), new Date().getDate()).getTime()
+  const upcomingAll = filteredSummary
+    .flatMap(s => s.upcoming.map(v => ({ ...v, workerName: s.name, workerColor: s.color })))
+    .filter(v => {
+      try {
+        return parseLocalDate(v.startDate.slice(0, 10)).getTime() > todayStart
+      } catch (e) {
+        return true
       }
-    }
-
-    return true
-  })
+    })
+    .sort((a, b) => parseLocalDate(a.startDate.slice(0, 10)).getTime() - parseLocalDate(b.startDate.slice(0, 10)).getTime())
+  const todayIso = isoDate(new Date())
+  const displayedVacations = vacations
+    .slice()
+    .sort((a, b) => parseLocalDate(b.startDate.slice(0, 10)).getTime() - parseLocalDate(a.startDate.slice(0, 10)).getTime())
 
   const pendingRequests = vacations.filter(v => v.request === 0)
 
@@ -1377,7 +1348,7 @@ export default function VacationsPage() {
               disabled={!isAdmin && currentUserWorkerId !== null && !editId}
             >
               <option value="">Selecione...</option>
-              {workers.filter(w => w.active).map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
+              {workers.filter(w => w.active && !w.dontVacation).map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
             </select>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>

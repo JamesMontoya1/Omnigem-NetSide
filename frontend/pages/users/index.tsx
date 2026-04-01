@@ -169,8 +169,8 @@ export default function Usuarios() {
         </div>
       </div>
 
-      <div style={{ padding: 24, flex: 1, minHeight: 0 }}>
-        <div style={{ maxWidth: 800, marginLeft: 'auto' }}>
+      <div style={{ padding: 24, flex: 1, minHeight: 0, alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ maxWidth: 800, width: '100%', margin: '0 auto' }}>
           {error && <p style={{ color: PALETTE.error, fontSize: 13, padding: '8px 10px', background: `${PALETTE.error}18`, borderRadius: 6, border: `1px solid ${PALETTE.error}44`, marginBottom: 16 }}>{error}</p>}
 
           {/* Modal de criação/edição */}

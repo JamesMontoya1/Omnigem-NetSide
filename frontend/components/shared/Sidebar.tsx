@@ -31,6 +31,9 @@ const IconBack = ({ style }: { style?: React.CSSProperties }) => (
 const IconLogout = ({ style }: { style?: React.CSSProperties }) => (
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" style={style} fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round"><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/><path d="M9 5v14"/></svg>
 )
+const IconPunch = ({ style }: { style?: React.CSSProperties }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" style={style} fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M12 7v5l3 3"/></svg>
+)
 
 function Sidebar({ open, onClose, persistent = false, onOpenWorkers, onOpenHolidays }: Props) {
   const router = useRouter()
@@ -97,7 +100,7 @@ function Sidebar({ open, onClose, persistent = false, onOpenWorkers, onOpenHolid
 
   useEffect(() => {
     if (typeof window === 'undefined') return
-    const routes = ['/shifts', '/vacations', '/trips', '/sped-control']
+    const routes = ['/shifts', '/vacations', '/trips', '/sped-control', '/time-punches']
     const prefetchAll = () => {
       routes.forEach((r) => {
         try {
@@ -150,6 +153,12 @@ function Sidebar({ open, onClose, persistent = false, onOpenWorkers, onOpenHolid
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
             <IconSped style={iconStyle} />
             Controle SPED
+          </span>
+        </button>
+        <button onMouseEnter={() => router.prefetch('/time-punches')} onClick={() => nav('/time-punches')} style={{ ...btnSmall, textAlign: 'left', fontSize: 15 }}>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+            <IconPunch style={iconStyle} />
+            Registro de Ponto
           </span>
         </button>
         {isAdmin && (

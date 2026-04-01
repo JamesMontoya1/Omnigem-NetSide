@@ -72,7 +72,12 @@ async function main() {
   const catNames = ['Combustível', 'Manutenção', 'Pedágio', 'Outros'];
   const vcats = [];
   for (const name of catNames) {
-    vcats.push(await prisma.vehicleExpenseCategory.create({ data: { name, description: `${name} (seed)` } }));
+    const cat = await prisma.vehicleExpenseCategory.upsert({
+      where: { name },
+      update: { description: `${name} (seed)` },
+      create: { name, description: `${name} (seed)` },
+    });
+    vcats.push(cat);
   }
 
   // Vehicles
@@ -224,6 +229,54 @@ async function main() {
       await prisma.assignment.create({ data: { date, worker: { connect: { id: w.id } }, source: 'MANUAL' } });
     } catch (e) {
       // ignore unique constraint or other
+    }
+  }
+
+  // Time punches (seed) — gera registros de ponto para testes
+  // Para X primeiros trabalhadores, cria registros dos últimos N dias
+  const punchesData: any[] = [];
+  const seedWorkers = workers.slice(0, Math.min(10, workers.length));
+  const daysToSeed = 7;
+
+  function minutesToDate(day: Date, minutes: number) {
+    return new Date(day.getFullYear(), day.getMonth(), day.getDate(), Math.floor(minutes / 60), minutes % 60, 0);
+  }
+
+  for (const w of seedWorkers) {
+    for (let d = 0; d < daysToSeed; d++) {
+      const base = new Date();
+      base.setHours(0, 0, 0, 0);
+      base.setDate(base.getDate() - d);
+
+      // pula finais de semana (opcional)
+      const dow = base.getDay();
+      if (dow === 0 || dow === 6) continue;
+
+      const inMin = 8 * 60 + randInt(-15, 15);
+      const breakStartMin = 12 * 60 + randInt(-10, 10);
+      const breakEndMin = 13 * 60 + randInt(-10, 10);
+      const outMin = 17 * 60 + randInt(-20, 20);
+
+      punchesData.push({ workerId: w.id, occurredAt: minutesToDate(base, inMin), type: 'IN', source: 'MANUAL' });
+      punchesData.push({ workerId: w.id, occurredAt: minutesToDate(base, breakStartMin), type: 'BREAK_START', source: 'MANUAL' });
+      punchesData.push({ workerId: w.id, occurredAt: minutesToDate(base, breakEndMin), type: 'BREAK_END', source: 'MANUAL' });
+      punchesData.push({ workerId: w.id, occurredAt: minutesToDate(base, outMin), type: 'OUT', source: 'MANUAL' });
+
+      // alguns registros de exemplo importados (PontoSimples)
+      if (Math.random() > 0.8) {
+        const ext = `ps-${w.id}-${d}-${Date.now()}`;
+        const psTime = minutesToDate(base, Math.max(6 * 60, inMin - 30));
+        punchesData.push({ workerId: w.id, occurredAt: psTime, type: 'IN', source: 'PONTOSIMPLES', externalId: ext });
+      }
+    }
+  }
+
+  if (punchesData.length) {
+    try {
+      await prisma.timePunch.createMany({ data: punchesData });
+      console.log(`Seeded ${punchesData.length} time punches for ${seedWorkers.length} workers`);
+    } catch (e) {
+      console.error('Error seeding time punches', e);
     }
   }
 

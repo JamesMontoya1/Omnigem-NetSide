@@ -14,7 +14,7 @@ type Vacation = { id: number; request?: number | null }
 type Trip = { id: number; date: string; completed?: boolean }
 type Vehicle = { id: number; model?: string; plate?: string; nextOilChange?: string | null; lastMaintenance?: string | null; lastAlignment?: string | null }
 type Rotation = { id: number; weekdays: number[]; startDate: string; endDate?: string | null; notifyUpcoming?: boolean }
-type NotifItem = { id: string; label: string; detail: string; route: string; severity: 'warning' | 'info' }
+type NotifItem = { id: string; label: string; detail: string | string[]; when?: string; route: string; severity: 'warning' | 'info' }
 type ChartBar = { label: string; value: number; color: string }
 
 function toDateInput(iso: string) {
@@ -65,7 +65,9 @@ export default function SelectionPanel({ embedded = false }: { embedded?: boolea
   const [trips, setTrips] = useState<Trip[]>([])
   const [vehicles, setVehicles] = useState<Vehicle[]>([])
   const [vacations, setVacations] = useState<Vacation[]>([])
+  const [vacationSummary, setVacationSummary] = useState<any[]>([])
   const [rotations, setRotations] = useState<Rotation[]>([])
+  const [shiftCalendar, setShiftCalendar] = useState<Record<string, any>>({})
   const [alignmentInterval, setAlignmentInterval] = useState(60)
   const [maintenanceInterval, setMaintenanceInterval] = useState(60)
 
@@ -73,16 +75,26 @@ export default function SelectionPanel({ embedded = false }: { embedded?: boolea
     ;(async () => {
       setLoading(true)
       try {
-        const [vRes, tRes, vehRes, rotRes, mRes, aRes] = await Promise.all([
+        const today = new Date()
+        today.setHours(0, 0, 0, 0)
+        const end = new Date(today)
+        end.setDate(end.getDate() + 30)
+        const startIso = isoDate(today)
+        const endIso = isoDate(end)
+
+        const [vRes, vsRes, tRes, vehRes, rotRes, mRes, aRes, calRes] = await Promise.all([
           fetch(`${API_BASE}/vacations`, { headers: authHeaders() }),
+          fetch(`${API_BASE}/vacations/summary`, { headers: authHeaders() }),
           fetch(`${API_BASE}/trips`, { headers: authHeaders() }),
           fetch(`${API_BASE}/vehicles`, { headers: authHeaders() }),
           fetch(`${API_BASE}/rotations`, { headers: authHeaders() }),
           fetch(`${API_BASE}/settings/maintenanceInterval`, { headers: authHeaders() }),
           fetch(`${API_BASE}/settings/alignmentInterval`, { headers: authHeaders() }),
+          fetch(`${API_BASE}/rotations/calendar?startDate=${startIso}&endDate=${endIso}`, { headers: authHeaders() }),
         ])
 
         if (vRes.ok) setVacations(await vRes.json())
+        if (vsRes && vsRes.ok) setVacationSummary(await vsRes.json())
         if (tRes.ok) setTrips(await tRes.json())
         if (vehRes.ok) setVehicles(await vehRes.json())
         if (rotRes.ok) setRotations(await rotRes.json())
@@ -93,6 +105,14 @@ export default function SelectionPanel({ embedded = false }: { embedded?: boolea
         if (aRes.ok) {
           const j = await aRes.json()
           if (typeof j?.value === 'number' && j.value > 0) setAlignmentInterval(j.value)
+        }
+        if (calRes && calRes.ok) {
+          try {
+            const c = await calRes.json()
+            setShiftCalendar(c || {})
+          } catch (e) {
+            setShiftCalendar({})
+          }
         }
       } finally {
         setLoading(false)
@@ -120,8 +140,6 @@ export default function SelectionPanel({ embedded = false }: { embedded?: boolea
       // ignore
     }
   }, [])
-
-  
 
   const counts = useMemo(() => {
     const today = new Date()
@@ -178,6 +196,105 @@ export default function SelectionPanel({ embedded = false }: { embedded?: boolea
     }
   }, [vacations, trips, vehicles, rotations, maintenanceInterval, alignmentInterval])
 
+  function formatDateWithWeekday(d: Date) {
+    const DAYS = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado']
+    const dayName = DAYS[d.getDay()]
+    const day = String(d.getDate()).padStart(2, '0')
+    const month = String(d.getMonth() + 1).padStart(2, '0')
+    return `${day}/${month} ${dayName}`
+  }
+
+  const nextTripItem = useMemo(() => {
+    if (!trips || trips.length === 0) return null
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    const candidates = trips
+      .filter(t => !t.completed)
+      .map(t => ({
+        raw: t,
+        date: parseLocalDate(toDateInput((t as any).date)),
+      }))
+      .filter(x => x.date.getTime() >= today.getTime())
+      .sort((a, b) => a.date.getTime() - b.date.getTime())
+
+    if (!candidates || candidates.length === 0) return null
+    const t: any = candidates[0].raw
+    const drivers = (t.drivers || []).map((w: any) => w.name)
+    const travelers = (t.travelers || []).map((w: any) => w.name)
+    const equipe = Array.from(new Set([...drivers, ...travelers])).join(', ') || '—'
+    const startTime = t.startTime || ''
+    const dateObj = parseLocalDate(toDateInput((t as any).date))
+    const dateStr = formatDateWithWeekday(dateObj)
+    const whenStr = startTime ? `${dateStr} - ${startTime}` : dateStr
+    return {
+      id: `next-trip-${t.id}`,
+      label: 'Próxima viagem',
+      detail: equipe,
+      when: whenStr,
+      route: '/trips',
+      severity: 'info',
+    } as NotifItem
+  }, [trips])
+
+  const upcomingShifts = useMemo(() => {
+    try {
+      const list: any[] = []
+      const today = new Date()
+      today.setHours(0, 0, 0, 0)
+      const keys = Object.keys(shiftCalendar || {}).sort()
+      for (const iso of keys) {
+        try {
+          const d = parseLocalDate(iso)
+          if (d.getTime() < today.getTime()) continue
+          const dayData = (shiftCalendar as any)[iso]
+          const entries = Array.isArray(dayData?.entries) ? dayData.entries : []
+          for (let i = 0; i < entries.length; i++) {
+            const en = entries[i]
+            const workerName = en.workerName || en.name || (en.worker && en.worker.name) || '—'
+            const rotationName = en.rotationName || en.rotation || ''
+            const workerColor = en.workerColor || en.color || (en.worker && en.worker.color) || null
+            const holidayName = dayData && dayData.holiday && (dayData.holiday.name || null)
+            const isHoliday = Boolean(dayData && dayData.holiday)
+            list.push({ id: `${iso}-${i}-${en.workerId ?? workerName}`, date: iso, workerName, rotationName, workerId: en.workerId ?? null, workerColor, holidayName, isHoliday })
+          }
+        } catch (e) { /* ignore individual day parse errors */ }
+      }
+      return list.sort((a, b) => parseLocalDate(toDateInput(a.date)).getTime() - parseLocalDate(toDateInput(b.date)).getTime()).slice(0, 5)
+    } catch (e) { return [] }
+  }, [shiftCalendar])
+
+  const nextShiftItem = useMemo(() => {
+    if (!shiftCalendar || Object.keys(shiftCalendar).length === 0) return null
+    const DAYS = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado']
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    for (let i = 0; i <= 30; i++) {
+      const d = new Date(today)
+      d.setDate(today.getDate() + i)
+      const iso = isoDate(d)
+      const dayData = shiftCalendar[iso]
+      if (!dayData || !Array.isArray(dayData.entries)) continue
+      const entry = dayData.entries.find((en: any) => en.workerId != null || en.workerName)
+      if (entry) {
+        const name = entry.workerName || '—'
+        const day = String(d.getDate()).padStart(2, '0')
+        const month = String(d.getMonth() + 1).padStart(2, '0')
+        const dateStr = `${day}/${month}`
+        const dayName = DAYS[d.getDay()]
+        const whenStr = `${dateStr} - ${dayName} - ${name}`
+        return {
+          id: `next-shift-${iso}`,
+          label: 'Próximo plantão',
+          detail: '',
+          when: whenStr,
+          route: '/shifts/calendar',
+          severity: 'info',
+        } as NotifItem
+      }
+    }
+    return null
+  }, [shiftCalendar])
+
   const notifications: NotifItem[] = useMemo(() => {
     const list: NotifItem[] = []
     if (counts.pendingVacationRequests > 0) {
@@ -189,7 +306,9 @@ export default function SelectionPanel({ embedded = false }: { embedded?: boolea
         severity: 'warning',
       })
     }
-    if (counts.upcomingTrips > 0) {
+    if (nextTripItem) {
+      list.push(nextTripItem)
+    } else if (counts.upcomingTrips > 0) {
       list.push({
         id: 'trip-upcoming',
         label: 'Viagens para hoje/amanhã',
@@ -198,20 +317,69 @@ export default function SelectionPanel({ embedded = false }: { embedded?: boolea
         severity: 'info',
       })
     }
-    if (counts.oilDueSoon > 0) {
-      list.push({ id: 'oil-due', label: 'Trocas de óleo próximas', detail: `${counts.oilDueSoon} veículo(s) nos próximos 30 dias`, route: '/trips', severity: 'warning' })
+
+    const vehTotal = counts.oilDueSoon + counts.maintenanceDueSoon + counts.alignmentDueSoon
+    if (vehTotal > 0) {
+      const vehicleLines: string[] = []
+
+      const today = new Date()
+      today.setHours(0, 0, 0, 0)
+      const msPerDay = 24 * 60 * 60 * 1000
+      let earliestOverall: { date: Date; vehicle: Vehicle; type: string } | null = null
+
+      for (const v of vehicles) {
+        const linesForVehicle: string[] = []
+        if (v.nextOilChange) {
+          const d = parseLocalDate(toDateInput(String(v.nextOilChange)))
+          const diff = Math.ceil((d.getTime() - today.getTime()) / msPerDay)
+          if (diff >= 0 && diff <= 30) {
+            linesForVehicle.push(`Troca de óleo - ${formatDateWithWeekday(d)}`)
+            if (!earliestOverall || d.getTime() < earliestOverall.date.getTime()) earliestOverall = { date: d, vehicle: v, type: 'Troca de óleo' }
+          }
+        }
+        if (v.lastMaintenance) {
+          const d = parseLocalDate(toDateInput(String(v.lastMaintenance)))
+          d.setDate(d.getDate() + maintenanceInterval)
+          const diff = Math.ceil((d.getTime() - today.getTime()) / msPerDay)
+          if (diff >= 0 && diff <= 30) {
+            linesForVehicle.push(`Manutenção - ${formatDateWithWeekday(d)}`)
+            if (!earliestOverall || d.getTime() < earliestOverall.date.getTime()) earliestOverall = { date: d, vehicle: v, type: 'Manutenção' }
+          }
+        }
+        if (v.lastAlignment) {
+          const d = parseLocalDate(toDateInput(String(v.lastAlignment)))
+          d.setDate(d.getDate() + alignmentInterval)
+          const diff = Math.ceil((d.getTime() - today.getTime()) / msPerDay)
+          if (diff >= 0 && diff <= 30) {
+            linesForVehicle.push(`Alinhamento - ${formatDateWithWeekday(d)}`)
+            if (!earliestOverall || d.getTime() < earliestOverall.date.getTime()) earliestOverall = { date: d, vehicle: v, type: 'Alinhamento' }
+          }
+        }
+
+        if (linesForVehicle.length > 0) {
+          vehicleLines.push(`${v.plate || v.model || 'Veículo'}`)
+          for (const ln of linesForVehicle) vehicleLines.push(ln)
+        }
+      }
+
+      if (vehicleLines.length > 0) {
+        list.push({
+          id: 'vehicles',
+          label: 'Veículos — ações próximas',
+          detail: vehicleLines,
+          route: '/trips/VehiclesTab',
+          severity: 'warning',
+        })
+      }
     }
-    if (counts.maintenanceDueSoon > 0) {
-      list.push({ id: 'maintenance-due', label: 'Manutenções próximas', detail: `${counts.maintenanceDueSoon} veículo(s) nos próximos 30 dias`, route: '/trips', severity: 'warning' })
-    }
-    if (counts.alignmentDueSoon > 0) {
-      list.push({ id: 'align-due', label: 'Alinhamentos próximos', detail: `${counts.alignmentDueSoon} veículo(s) nos próximos 30 dias`, route: '/trips', severity: 'warning' })
-    }
-    if (counts.shiftsAlerts > 0) {
+
+    if (nextShiftItem) {
+      list.push(nextShiftItem)
+    } else if (counts.shiftsAlerts > 0) {
       list.push({ id: 'shifts-alerts', label: 'Alertas de plantão na semana', detail: `${counts.shiftsAlerts} ocorrência(s) com notificação visual`, route: '/shifts/calendar', severity: 'info' })
     }
     return list
-  }, [counts])
+  }, [counts, vehicles, maintenanceInterval, alignmentInterval, nextTripItem, nextShiftItem])
 
   const chartData = useMemo(() => ([
     { key: 'vac', label: 'Férias (aprovação)', value: counts.pendingVacationRequests, color: PALETTE.warning, route: '/vacations' },
@@ -254,6 +422,55 @@ export default function SelectionPanel({ embedded = false }: { embedded?: boolea
       ] as ChartBar[],
     }
   }, [vacations, trips, rotations, counts.pendingVacationRequests])
+
+  const upcomingVacations = useMemo(() => {
+    try {
+      const list: any[] = []
+      for (const s of vacationSummary || []) {
+        const ups = Array.isArray(s.upcoming) ? s.upcoming : []
+        for (const v of ups) list.push({ ...v, workerName: s.name, workerColor: s.color })
+      }
+      const today = new Date()
+      today.setHours(0, 0, 0, 0)
+      return list
+        .filter(v => {
+          try {
+            const d = parseLocalDate(toDateInput(v.startDate))
+            return d.getTime() >= today.getTime()
+          } catch (e) { return false }
+        })
+        .sort((a, b) => parseLocalDate(toDateInput(a.startDate)).getTime() - parseLocalDate(toDateInput(b.startDate)).getTime())
+        .slice(0, 5)
+    } catch (e) { return [] }
+  }, [vacationSummary])
+
+  const upcomingTrips = useMemo(() => {
+    try {
+      const list: any[] = (trips || []).filter(t => !t.completed).map(t => {
+        const date = toDateInput((t as any).date)
+        const driverNames = (t as any).drivers && Array.isArray((t as any).drivers) ? (t as any).drivers.map((w: any) => w.name).filter(Boolean) : []
+        const travelerNames = (t as any).travelers && Array.isArray((t as any).travelers) ? (t as any).travelers.map((w: any) => w.name).filter(Boolean) : []
+        const workersArr = Array.from(new Set([...driverNames, ...travelerNames]))
+        const workers = workersArr.join(', ')
+        const drivers = driverNames.join(', ')
+        const travelers = travelerNames.join(', ')
+        const cityName = (t as any).city?.name || ''
+        const startTime = (t as any).startTime || ''
+        return { id: t.id, date, startTime, cityName, drivers, travelers, workers }
+      })
+      const today = new Date()
+      today.setHours(0, 0, 0, 0)
+      return list
+        .filter(x => {
+          try {
+            const d = parseLocalDate(toDateInput(x.date))
+            return d.getTime() >= today.getTime()
+          } catch (e) { return false }
+        })
+        .sort((a, b) => parseLocalDate(toDateInput(a.date)).getTime() - parseLocalDate(toDateInput(b.date)).getTime())
+        .slice(0, 5)
+    } catch (e) { return [] }
+  }, [trips])
 
   useEffect(() => {
     if (!showWorkersModal) return
@@ -365,6 +582,10 @@ export default function SelectionPanel({ embedded = false }: { embedded?: boolea
           chartData={chartData}
           moduleCharts={moduleCharts}
           notifications={notifications}
+          inconsistentCount={0}
+          upcomingVacations={upcomingVacations}
+          upcomingTrips={upcomingTrips}
+          upcomingShifts={upcomingShifts}
           onNavigate={(r) => router.push(r)}
         />
       </div>
@@ -392,6 +613,10 @@ export default function SelectionPanel({ embedded = false }: { embedded?: boolea
           chartData={chartData}
           moduleCharts={moduleCharts}
           notifications={notifications}
+          inconsistentCount={0}
+          upcomingVacations={upcomingVacations}
+          upcomingTrips={upcomingTrips}
+          upcomingShifts={upcomingShifts}
           onNavigate={(r) => router.push(r)}
         />
       )}

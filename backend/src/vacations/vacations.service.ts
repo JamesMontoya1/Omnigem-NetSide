@@ -124,7 +124,7 @@ export class VacationsService {
 
       const pendingDays = totalEarned - totalUsed;
 
-      const upcoming = w.vacations.filter(v => new Date(v.startDate) > today);
+      const upcoming = w.vacations;
 
       return {
         id: w.id,
