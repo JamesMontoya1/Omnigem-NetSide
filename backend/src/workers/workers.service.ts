@@ -6,18 +6,20 @@ export class WorkersService {
   constructor(private prisma: PrismaService) {}
 
   list() {
-    return this.prisma.worker.findMany({ orderBy: { name: 'asc' } });
+    return this.prisma.worker.findMany({ orderBy: { name: 'asc' }, include: { position: true } });
   }
 
   get(id: number) {
-    return this.prisma.worker.findUnique({ where: { id } });
+    return this.prisma.worker.findUnique({ where: { id }, include: { position: true } });
   }
 
-  create(data: { name: string; color?: string; hireDate?: string; terminationDate?: string; doesShifts?: boolean; doesTravel?: boolean }) {
+  create(data: { name: string; color?: string; hireDate?: string; terminationDate?: string; doesShifts?: boolean; doesTravel?: boolean; positionId?: number | null }) {
     return this.prisma.worker.create({
       data: {
         name: data.name,
         color: data.color,
+        dontVacation: (data as any).dontVacation ?? false,
+        positionId: data.positionId ?? undefined,
         doesShifts: data.doesShifts ?? false,
         doesTravel: data.doesTravel ?? false,
         active: data.terminationDate ? false : true,
@@ -27,7 +29,7 @@ export class WorkersService {
     });
   }
 
-  update(id: number, data: { name?: string; color?: string; active?: boolean; hireDate?: string; terminationDate?: string; doesShifts?: boolean; doesTravel?: boolean }) {
+  update(id: number, data: { name?: string; color?: string; active?: boolean; hireDate?: string; terminationDate?: string; doesShifts?: boolean; doesTravel?: boolean; positionId?: number | null }) {
     const active = data.terminationDate !== undefined
       ? (data.terminationDate ? false : (data.active ?? undefined))
       : data.active;
@@ -35,6 +37,7 @@ export class WorkersService {
       where: { id },
       data: {
         ...data,
+        positionId: data.positionId !== undefined ? (data.positionId ?? null) : undefined,
         doesShifts: data.doesShifts,
         doesTravel: data.doesTravel,
         active,

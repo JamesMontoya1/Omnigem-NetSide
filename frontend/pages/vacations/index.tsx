@@ -168,7 +168,6 @@ export default function VacationsPage() {
   const [selectedDay, setSelectedDay] = useState<Date | null>(null)
   const [panelOpen, setPanelOpen] = useState(false)
 
-  // Notifications (admin-only): pending vacation requests
   const notifRef = useRef<HTMLButtonElement | null>(null)
   const [showNotifications, setShowNotifications] = useState(false)
   const [notifPos, setNotifPos] = useState<{ top: number; left: number } | null>(null)
@@ -186,13 +185,73 @@ export default function VacationsPage() {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({ pending: true, upcoming: true, tenure: true, nextVac: true })
   function toggleSection(key: string) { setExpanded(prev => ({ ...prev, [key]: !prev[key] })) }
 
+  const [listHeights, setListHeights] = useState<Record<string, number>>({ pending: 220, upcoming: 220, tenure: 100, nextVac: 100 })
+  const listHeightsRef = useRef(listHeights)
+  const [resizingKey, setResizingKey] = useState<string | null>(null)
+  useEffect(() => { listHeightsRef.current = listHeights }, [listHeights])
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('vacations_list_heights')
+      if (raw) setListHeights(JSON.parse(raw))
+    } catch { }
+  }, [])
+
+  const resizeDragRef = useRef<{ key: string | null; startY: number; startHeight: number } | null>(null)
+
+  function startResize(key: string, e: any) {
+    if (!expanded[key]) return
+    e.preventDefault && e.preventDefault()
+    try { (e.currentTarget as Element).setPointerCapture?.(e.pointerId) } catch {}
+    const startY = e.clientY ?? (e.touches && e.touches[0] && e.touches[0].clientY) ?? 0
+    const startHeight = listHeights[key] ?? 220
+    resizeDragRef.current = { key, startY, startHeight }
+
+    const prevCursor = document.body.style.cursor
+    document.body.style.userSelect = 'none'
+    document.body.style.cursor = 'ns-resize'
+    setResizingKey(key)
+
+    const onMove = (ev: any) => {
+      if (!resizeDragRef.current) return
+      const clientY = ev.clientY ?? (ev.touches && ev.touches[0] && ev.touches[0].clientY)
+      if (typeof clientY !== 'number') return
+      ev.preventDefault && ev.preventDefault()
+      const { key: k, startY: sY, startHeight: sH } = resizeDragRef.current
+      const delta = clientY - sY
+      const minH = 80
+      const maxH = Math.max(200, window.innerHeight - 120)
+      const newH = Math.max(minH, Math.min(maxH, sH + delta))
+      setListHeights(prev => ({ ...prev, [k!]: newH }))
+    }
+
+    const onUp = (_ev: any) => {
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+      window.removeEventListener('touchmove', onMove)
+      window.removeEventListener('touchend', onUp)
+      document.body.style.userSelect = ''
+      document.body.style.cursor = prevCursor || ''
+      setResizingKey(null)
+      try { localStorage.setItem('vacations_list_heights', JSON.stringify(listHeightsRef.current)) } catch {}
+      resizeDragRef.current = null
+    }
+
+    window.addEventListener('pointermove', onMove, { passive: false } as any)
+    window.addEventListener('pointerup', onUp)
+    window.addEventListener('mousemove', onMove, { passive: false } as any)
+    window.addEventListener('mouseup', onUp)
+    window.addEventListener('touchmove', onMove, { passive: false } as any)
+    window.addEventListener('touchend', onUp)
+  }
+
   useEffect(() => {
     try {
       const roles = JSON.parse(localStorage.getItem('shifts_roles') || '[]')
       setIsAdmin(Array.isArray(roles) && roles.includes('ADMIN'))
     } catch { setIsAdmin(false) }
     load();
-    // try to load current user info (may be unauthorized for guest/no-token)
     (async () => {
       try {
         const res = await fetch(`${API_BASE}/auth/me`, { headers: authHeaders() })
@@ -224,16 +283,22 @@ export default function VacationsPage() {
 
   async function load() {
     try {
-      const [wRes, vRes, sRes] = await Promise.all([
-        fetch(`${API_BASE}/workers`),
-        fetch(`${API_BASE}/vacations`),
-        fetch(`${API_BASE}/vacations/summary`),
-        fetch(`${API_BASE}/holidays`),
+      const [wRes, vRes, sRes, hRes] = await Promise.all([
+        fetch(`${API_BASE}/workers`, { headers: authHeaders() }),
+        fetch(`${API_BASE}/vacations`, { headers: authHeaders() }),
+        fetch(`${API_BASE}/vacations/summary`, { headers: authHeaders() }),
+        fetch(`${API_BASE}/holidays`, { headers: authHeaders() }),
       ])
+
+      if (!wRes.ok) throw new Error('Erro ao carregar trabalhadores')
+      if (!vRes.ok) throw new Error('Erro ao carregar férias')
+      if (!sRes.ok) throw new Error('Erro ao carregar resumo de férias')
+      if (!hRes.ok) throw new Error('Erro ao carregar feriados')
+
       setWorkers(await wRes.json())
       setVacations(await vRes.json())
       setSummary(await sRes.json())
-      try { const hRes = await fetch(`${API_BASE}/holidays`); setHolidays(await hRes.json()) } catch (e) { console.error('holidays load', e) }
+      setHolidays(await hRes.json())
     } catch (e) { console.error(e) }
   }
 
@@ -448,14 +513,7 @@ export default function VacationsPage() {
 
   return (
     <main style={{ height: '100vh', display: 'flex', flexDirection: 'column', backgroundColor: PALETTE.background, fontFamily: 'system-ui, sans-serif', color: PALETTE.textPrimary }}>
-      <div style={{ padding: '16px 24px', display: 'flex', alignItems: 'center', gap: 16, borderBottom: `1px solid ${PALETTE.border}` }}>
-        <button onClick={() => router.push('/selection')} style={{
-            ...btnNav,
-            background: 'transparent',
-            color: '#FF3B30',
-            border: '2px solid #FF3B30',
-            fontWeight: 700,
-          }}>← Voltar</button>        
+      <div style={{ padding: '16px 24px', paddingLeft: 80, display: 'flex', alignItems: 'center', gap: 16, borderBottom: `1px solid ${PALETTE.border}` }}>
         <h1 style={{ margin: 0, fontSize: 22 }}>Férias</h1>
         {isAdmin && <button onClick={() => setShowWorkersModal(true)} style={btnNav}>👷 Trabalhadores</button>}
         {isAdmin && <button onClick={() => setShowHolidaysModal(true)} style={btnNav}>🎉 Feriados</button>}
@@ -1071,51 +1129,75 @@ export default function VacationsPage() {
             <div style={{ flex: 1, minWidth: 0 }}>
               {sectionHeader('pending', '⏳', 'Férias Pendentes', PALETTE.warning)}
               <div style={{
-                ...cardStyle,
-                borderTop: 'none',
-                borderRadius: expanded.pending ? '0 0 8px 8px' : 8,
-                maxHeight: expanded.pending ? 220 : 0,
-                overflowY: 'auto',
-                transition: 'max-height 320ms cubic-bezier(.2,.9,.2,1), opacity 200ms ease',
+                height: expanded.pending ? listHeights.pending : 0,
+                overflow: 'hidden',
+                transition: 'height 320ms cubic-bezier(.2,.9,.2,1), opacity 200ms ease',
                 opacity: expanded.pending ? 1 : 0,
+                display: 'flex',
+                flexDirection: 'column',
               }}>
-                {pendingWorkers.length === 0 && <p style={{ color: PALETTE.textDisabled, margin: 0, fontSize: 13 }}>Nenhum saldo pendente</p>}
-                {pendingWorkers.map(s => (
-                  <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 0', borderBottom: `1px solid ${PALETTE.border}` }}>
-                    <span style={{ width: 12, height: 12, borderRadius: '50%', background: s.color || PALETTE.border, flexShrink: 0 }} />
-                    <div style={{ flex: 1, fontSize: 13, minWidth: 0 }}>
-                      <strong style={{ display: 'block', maxWidth: '80px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name}</strong>
+                <div style={{
+                  ...cardStyle,
+                  borderTop: 'none',
+                  borderRadius: expanded.pending ? '0 0 8px 8px' : 8,
+                  overflowY: 'auto',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  flex: 1,
+                }}>
+                  {pendingWorkers.length === 0 && <p style={{ color: PALETTE.textDisabled, margin: 0, fontSize: 13 }}>Nenhum saldo pendente</p>}
+                  {pendingWorkers.map(s => (
+                    <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 0', borderBottom: `1px solid ${PALETTE.border}` }}>
+                      <span style={{ width: 12, height: 12, borderRadius: '50%', background: s.color || PALETTE.border, flexShrink: 0 }} />
+                      <div style={{ flex: 1, fontSize: 13, minWidth: 0 }}>
+                        <strong style={{ display: 'block', maxWidth: '80px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name}</strong>
+                      </div>
+                      <span style={{ fontWeight: 700, color: PALETTE.warning, fontSize: 13 }}>{s.pendingDays}d</span>
                     </div>
-                    <span style={{ fontWeight: 700, color: PALETTE.warning, fontSize: 13 }}>{s.pendingDays}d</span>
-                  </div>
-                ))}
+                  ))}
+                </div>
+                <div onPointerDown={(e) => startResize('pending', e)} style={{ height: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: expanded.pending ? 'ns-resize' : 'default', touchAction: 'none' }}>
+                  <div style={{ width: 44, height: 4, borderRadius: 3, background: resizingKey === 'pending' ? PALETTE.primary : PALETTE.border, opacity: 0.9 }} />
+                </div>
               </div>
             </div>
 
             <div style={{ flex: 1, minWidth: 0 }}>
               {sectionHeader('upcoming', '📅', 'Agendamento de férias', PALETTE.info)}
               <div style={{
-                ...cardStyle,
-                borderTop: 'none',
-                borderRadius: expanded.upcoming ? '0 0 8px 8px' : 8,
-                maxHeight: expanded.upcoming ? 220 : 0,
-                overflowY: 'auto',
-                transition: 'max-height 320ms cubic-bezier(.2,.9,.2,1), opacity 200ms ease',
+                height: expanded.upcoming ? listHeights.upcoming : 0,
+                overflow: 'hidden',
+                transition: 'height 320ms cubic-bezier(.2,.9,.2,1), opacity 200ms ease',
                 opacity: expanded.upcoming ? 1 : 0,
+                display: 'flex',
+                flexDirection: 'column',
               }}>
-                {upcomingAll.length === 0 && <p style={{ color: PALETTE.textDisabled, margin: 0, fontSize: 13 }}>Nenhuma férias agendada</p>}
-                {upcomingAll.map((v: any) => (
-                  <div key={v.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 0', borderBottom: `1px solid ${PALETTE.border}` }}>
-                    <span style={{ width: 12, height: 12, borderRadius: '50%', background: v.workerColor || PALETTE.border, flexShrink: 0 }} />
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <strong style={{ fontSize: 13, display: 'block', maxWidth: '80px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{v.workerName}</strong>
-                      <div style={{ fontSize: 11, color: PALETTE.textSecondary }}>
-                        {fmtDate(v.startDate)} — {fmtDate(v.endDate)} ({v.daysUsed}d)
+                <div style={{
+                  ...cardStyle,
+                  borderTop: 'none',
+                  borderRadius: expanded.upcoming ? '0 0 8px 8px' : 8,
+                  overflowY: 'auto',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  flex: 1,
+                }}>
+                  {upcomingAll.length === 0 && <p style={{ color: PALETTE.textDisabled, margin: 0, fontSize: 13 }}>Nenhuma férias agendada</p>}
+                  {upcomingAll.map((v: any) => (
+                    <div key={v.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 0', borderBottom: `1px solid ${PALETTE.border}` }}>
+                      <span style={{ width: 12, height: 12, borderRadius: '50%', background: v.workerColor || PALETTE.border, flexShrink: 0 }} />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <strong style={{ fontSize: 13, display: 'block', maxWidth: '80px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{v.workerName}</strong>
+                        <div style={{ fontSize: 11, color: PALETTE.textSecondary }}>
+                          {fmtDate(v.startDate)} — {fmtDate(v.endDate)} ({v.daysUsed}d)
+                        </div>
                       </div>
+                      {isAdmin && <button onClick={() => startEdit(v)} style={btnSmall}>Editar</button>}
                     </div>
-                    {isAdmin && <button onClick={() => startEdit(v)} style={btnSmall}>Editar</button>}
-                  </div>
-                ))}
+                  ))}
+                </div>
+                <div onPointerDown={(e) => startResize('upcoming', e)} style={{ height: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: expanded.upcoming ? 'ns-resize' : 'default', touchAction: 'none' }}>
+                  <div style={{ width: 44, height: 4, borderRadius: 3, background: resizingKey === 'upcoming' ? PALETTE.primary : PALETTE.border, opacity: 0.9 }} />
+                </div>
               </div>
             </div>
           </div>
@@ -1125,20 +1207,26 @@ export default function VacationsPage() {
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
               {sectionHeader('tenure', '🏢', 'Tempo de Casa', PALETTE.success)}
               <div style={{
-                ...cardStyle,
-                borderTop: 'none',
-                borderRadius: expanded.tenure ? '0 0 8px 8px' : 8,
+                height: expanded.tenure ? listHeights.tenure : 0,
+                minHeight: 100,
+                overflow: 'hidden',
+                transition: 'height 360ms cubic-bezier(.2,.9,.2,1), opacity 220ms ease',
+                opacity: expanded.tenure ? 1 : 0,
                 display: 'flex',
                 flexDirection: 'column',
-                gap: 8,
-                maxHeight: expanded.tenure ? 340 : 0,
-                overflowY: 'auto',
-                transition: 'max-height 360ms cubic-bezier(.2,.9,.2,1), opacity 220ms ease',
-                opacity: expanded.tenure ? 1 : 0,
-                flex: 1,
               }}>
-                {filteredSummary.length === 0 && <p style={{ color: PALETTE.textDisabled, margin: 0, fontSize: 13 }}>Nenhum trabalhador ativo</p>}
-                {filteredSummary.slice().sort((a, b) => {
+                <div style={{
+                  ...cardStyle,
+                  borderTop: 'none',
+                  borderRadius: expanded.tenure ? '0 0 8px 8px' : 8,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 8,
+                  overflowY: 'auto',
+                  flex: 1,
+                }}>
+                  {filteredSummary.length === 0 && <p style={{ color: PALETTE.textDisabled, margin: 0, fontSize: 13 }}>Nenhum trabalhador ativo</p>}
+                  {filteredSummary.slice().sort((a, b) => {
                     const aMs = a.hireDate ? (nowTick - new Date(a.hireDate).getTime()) : Number.NEGATIVE_INFINITY
                     const bMs = b.hireDate ? (nowTick - new Date(b.hireDate).getTime()) : Number.NEGATIVE_INFINITY
                     if (bMs !== aMs) return bMs - aMs
@@ -1181,25 +1269,35 @@ export default function VacationsPage() {
                     )
                   })}
                 </div>
+                <div onPointerDown={(e) => startResize('tenure', e)} style={{ height: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: expanded.tenure ? 'ns-resize' : 'default', touchAction: 'none' }}>
+                  <div style={{ width: 44, height: 4, borderRadius: 3, background: resizingKey === 'tenure' ? PALETTE.primary : PALETTE.border, opacity: 0.9 }} />
+                </div>
+              </div>
             </div>
 
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
             {sectionHeader('nextVac', '⏱️', 'Dias p/ Próximas Férias', PALETTE.info)}
             <div style={{
-              ...cardStyle,
-              borderTop: 'none',
-              borderRadius: expanded.nextVac ? '0 0 8px 8px' : 8,
+              height: expanded.nextVac ? listHeights.nextVac : 0,
+              minHeight: 100,
+              overflow: 'hidden',
+              transition: 'height 360ms cubic-bezier(.2,.9,.2,1), opacity 220ms ease',
+              opacity: expanded.nextVac ? 1 : 0,
               display: 'flex',
               flexDirection: 'column',
-              gap: 8,
-              maxHeight: expanded.nextVac ? 340 : 0,
-              overflowY: 'auto',
-              transition: 'max-height 360ms cubic-bezier(.2,.9,.2,1), opacity 220ms ease',
-              opacity: expanded.nextVac ? 1 : 0,
-              flex: 1,
             }}>
-              {filteredSummary.length === 0 && <p style={{ color: PALETTE.textDisabled, margin: 0, fontSize: 13 }}>Nenhum trabalhador ativo</p>}
-              {filteredSummary.slice().sort((a, b) => {
+              <div style={{
+                ...cardStyle,
+                borderTop: 'none',
+                borderRadius: expanded.nextVac ? '0 0 8px 8px' : 8,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 8,
+                overflowY: 'auto',
+                flex: 1,
+              }}>
+                {filteredSummary.length === 0 && <p style={{ color: PALETTE.textDisabled, margin: 0, fontSize: 13 }}>Nenhum trabalhador ativo</p>}
+                {filteredSummary.slice().sort((a, b) => {
                   const da = daysUntilNextVacation(a.hireDate)
                   const db = daysUntilNextVacation(b.hireDate)
                   const na = da === null ? Number.MAX_SAFE_INTEGER : da
@@ -1249,6 +1347,10 @@ export default function VacationsPage() {
                   )
                 })}
               </div>
+              <div onPointerDown={(e) => startResize('nextVac', e)} style={{ height: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: expanded.nextVac ? 'ns-resize' : 'default', touchAction: 'none' }}>
+                <div style={{ width: 44, height: 4, borderRadius: 3, background: resizingKey === 'nextVac' ? PALETTE.primary : PALETTE.border, opacity: 0.9 }} />
+              </div>
+            </div>
           </div>
 
           </div>

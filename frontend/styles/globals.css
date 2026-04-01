@@ -43,6 +43,13 @@ select:focus, input:focus, textarea:focus {
   box-shadow: 0 0 0 2px rgba(92, 124, 250, 0.4);
 }
 
+/* Selection color for inputs and textareas */
+input::selection, textarea::selection,
+input::-moz-selection, textarea::-moz-selection {
+  background: #0d6efd;
+  color: #ffffff;
+}
+
 /* ── Scrollbar dark ── */
 ::-webkit-scrollbar { width: 8px; height: 8px }
 ::-webkit-scrollbar-track { background: #20242A }
@@ -71,4 +78,20 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   opacity: 0;
   width: 1.1rem;
   height: 1.1rem;
+}
+
+/* Draggable modal helpers */
+.draggable-modal {
+  position: fixed;
+  transform: none;
+  margin: 0;
+  box-sizing: border-box;
+  cursor: default;
+}
+.draggable-modal [data-draggable-handle] {
+  cursor: grab;
+  user-select: none;
+}
+.draggable-modal [data-draggable-handle]:active {
+  cursor: grabbing;
 }

@@ -118,12 +118,19 @@ export default function CalendarPage() {
   const [tab, setTab] = useState<Tab>('panel')
 
   const loadWorkers = useCallback(async () => {
-    try { const r = await fetch(`${API}/workers`); setWorkers(await r.json()); } catch { setWorkers([]); }
+    try {
+      const r = await fetch(`${API}/workers`, { headers: authHeaders() })
+      if (!r.ok) throw new Error('workers')
+      setWorkers(await r.json())
+    } catch {
+      setWorkers([])
+    }
   }, []);
 
   const loadRotations = useCallback(async () => {
     try {
-      const r = await fetch(`${API}/rotations`);
+      const r = await fetch(`${API}/rotations`, { headers: authHeaders() });
+      if (!r.ok) throw new Error('rotations')
       const data = await r.json();
       data.sort((a: Rotation, b: Rotation) => {
         const ta = a.startDate ? new Date(a.startDate).getTime() : 0;
@@ -142,14 +149,17 @@ export default function CalendarPage() {
     const s = toISO(gridStart);
     const e = toISO(gridEnd);
     try {
-      const r = await fetch(`${API}/rotations/calendar?startDate=${s}&endDate=${e}`);
+      const r = await fetch(`${API}/rotations/calendar?startDate=${s}&endDate=${e}`, { headers: authHeaders() });
+      if (!r.ok) return
       const fetched = await r.json();
       setCalendar(prev => ({ ...prev, ...fetched }));
     } catch {
     }
   }, []);
 
-  useEffect(() => { loadWorkers(); loadRotations(); }, []);
+  useEffect(() => {
+    Promise.all([loadWorkers(), loadRotations()]).catch(() => {})
+  }, []);
   useEffect(() => { loadCalendar(viewDate); }, [viewDate, loadCalendar]);
 
   const upcomingNotifiedThisWeek = useMemo(() => {
@@ -252,15 +262,8 @@ export default function CalendarPage() {
 
   return (
     <div style={{ fontFamily: 'system-ui, sans-serif', backgroundColor: PALETTE.background, color: PALETTE.textPrimary, height: '100vh', overflow: 'hidden', display: 'flex', flexDirection: 'column', boxSizing: 'border-box' }}>
-      <div style={{ padding: '12px 24px', display: 'flex', alignItems: 'center', gap: 12, borderBottom: `1px solid ${PALETTE.border}`, flexShrink: 0 }}>
+      <div style={{ padding: '12px 24px', paddingLeft: 80, display: 'flex', alignItems: 'center', gap: 12, borderBottom: `1px solid ${PALETTE.border}`, flexShrink: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <button onClick={() => router.push('/selection')} style={{
-            ...btnNav,
-            background: 'transparent',
-            color: '#FF3B30',
-            border: '2px solid #FF3B30',
-            fontWeight: 700,
-          }}>← Voltar</button>     
           <h1 style={{ margin: 0, fontSize: 22, marginLeft: 8 }}>Plantões</h1>
           {isAdmin && <button onClick={() => setShowWorkersModal(true)} style={btnNav}>👷 Trabalhadores</button>}
           {isAdmin && <button onClick={() => setShowHolidaysModal(true)} style={btnNav}>🎉 Feriados</button>}

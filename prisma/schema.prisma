@@ -32,22 +32,32 @@ model Worker {
   name            String
   color           String?
   active          Boolean   @default(true)
-  doesShifts      Boolean   @default(false) // Faz plantões?
-  doesTravel      Boolean   @default(false) // Faz viagens?
+  doesShifts      Boolean   @default(false) // Se faz plantões
+  doesTravel      Boolean   @default(false) // Se faz viagens
+  dontVacation    Boolean   @default(false) // Não entra em férias
   hireDate        DateTime?
   terminationDate DateTime?
-  createdAt       DateTime  @default(now())
 
-  user            User?     @relation("WorkerUser")
-
+  positionId        Int?
+  position          Position? @relation("Positions", fields: [positionId], references: [id])
+  user              User?     @relation("WorkerUser")
   recurringPatterns RecurringPattern[]
   assignments       Assignment[]
   vacations         Vacation[]
   trips             Trip[]    @relation("TravelerTrip")
   drivenTrips       Trip[]    @relation("DriverTrip")
-  vehicleExpenses    VehicleExpense[]
+  vehicleExpenses   VehicleExpense[]
+
+  createdAt       DateTime  @default(now())
 }
 
+model Position {
+  id          Int      @id @default(autoincrement())
+  name        String
+  discription String?
+  createdAt   DateTime @default(now())
+  workers     Worker[] @relation("Positions")
+}
 model Holiday {
   id        Int      @id @default(autoincrement())
   date      DateTime

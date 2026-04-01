@@ -1,5 +1,6 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { Prisma } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 
 @Injectable()
@@ -50,10 +51,20 @@ export class UsersService {
     const hashed = await bcrypt.hash(password, 10);
     const data: any = { email, password: hashed, roles: roles as any, name };
     if (workerId !== null) data.workerId = workerId;
-    return this.prisma.user.create({
-      data,
-      select: { id: true, email: true, name: true, roles: true, createdAt: true, workerId: true, worker: { select: { id: true, name: true } } },
-    });
+    try {
+      return await this.prisma.user.create({
+        data,
+        select: { id: true, email: true, name: true, roles: true, createdAt: true, workerId: true, worker: { select: { id: true, name: true } } },
+      });
+    } catch (e: any) {
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
+        const target = (e as any).meta?.target;
+        if (Array.isArray(target) && target.includes('workerId')) {
+          throw new BadRequestException('Trabalhador já atribuído a outro usuário');
+        }
+      }
+      throw e;
+    }
   }
 
   async update(id: number, data: { email?: string; password?: string; roles?: string[]; name?: string; workerId?: number | null }) {
@@ -63,11 +74,21 @@ export class UsersService {
     if (data.roles !== undefined) updateData.roles = data.roles;
     if (data.password) updateData.password = await bcrypt.hash(data.password, 10);
     if (data.workerId !== undefined) updateData.workerId = data.workerId;
-    return this.prisma.user.update({
-      where: { id },
-      data: updateData,
-      select: { id: true, email: true, name: true, roles: true, createdAt: true, workerId: true, worker: { select: { id: true, name: true } } },
-    });
+    try {
+      return await this.prisma.user.update({
+        where: { id },
+        data: updateData,
+        select: { id: true, email: true, name: true, roles: true, createdAt: true, workerId: true, worker: { select: { id: true, name: true } } },
+      });
+    } catch (e: any) {
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
+        const target = (e as any).meta?.target;
+        if (Array.isArray(target) && target.includes('workerId')) {
+          throw new BadRequestException('Trabalhador já atribuído a outro usuário');
+        }
+      }
+      throw e;
+    }
   }
 
   async remove(id: number) {

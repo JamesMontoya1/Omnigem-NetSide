@@ -25,6 +25,7 @@
     "prisma": "6.18.0"
   },
   "dependencies": {
+    "@babel/parser": "^7.29.2",
     "@prisma/adapter-pg": "^7.4.1",
     "@prisma/client": "^6.18.0",
     "dotenv": "^17.3.1",

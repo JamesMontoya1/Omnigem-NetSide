@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { PALETTE, btnPrimary, btnSmall, inputStyle, cardStyle } from '../../styles/theme'
 import { useToast } from './ToastProvider'
 import { API_BASE, authHeaders, jsonAuthHeaders } from '../../config/api'
@@ -43,6 +44,9 @@ type Worker = {
   terminationDate?: string | null
   doesShifts?: boolean
   doesTravel?: boolean
+  dontVacation?: boolean
+  positionId?: number | null
+  position?: { id: number; name: string } | null
 }
 
 const COLOR_PRESETS = [
@@ -63,8 +67,23 @@ export default function WorkersContent({ readOnly = false, showTitle = true, onC
   const [sortActiveFirst, setSortActiveFirst] = useState(true)
   const [doesShifts, setDoesShifts] = useState(false)
   const [doesTravel, setDoesTravel] = useState(false)
+  const [dontVacation, setDontVacation] = useState(false)
+  const [positions, setPositions] = useState<Array<{ id: number; name: string }>>([])
+  const [positionId, setPositionId] = useState<number | null>(null)
+  const [showNewPositionForm, setShowNewPositionForm] = useState(false)
+  const [newPositionName, setNewPositionName] = useState('')
 
   useEffect(() => { fetchWorkers() }, [])
+  useEffect(() => { fetchPositions() }, [])
+
+  const [portalContainer, setPortalContainer] = useState<HTMLElement | null>(null)
+  useEffect(() => {
+    const el = document.createElement('div')
+    el.setAttribute('data-portal', 'workers-modal')
+    document.body.appendChild(el)
+    setPortalContainer(el)
+    return () => { if (el.parentNode) el.parentNode.removeChild(el) }
+  }, [])
 
   const { addToast } = useToast()
 
@@ -80,6 +99,39 @@ export default function WorkersContent({ readOnly = false, showTitle = true, onC
     } catch (e) { console.error(e) }
   }
 
+  async function fetchPositions() {
+    try {
+      const res = await fetch(`${API_BASE}/positions`)
+      const data = await res.json()
+      setPositions(data || [])
+    } catch (e) { console.error(e) }
+  }
+
+  async function createPosition() {
+    if (!newPositionName.trim()) { addToast('Nome da função é obrigatório', 'error'); return }
+    try {
+      const res = await fetch(`${API_BASE}/positions`, {
+        method: 'POST',
+        headers: jsonAuthHeaders(),
+        body: JSON.stringify({ name: newPositionName.trim() }),
+      })
+      const txt = await res.text()
+      if (!res.ok) {
+        let msg = 'Erro ao criar função'
+        try { const j = JSON.parse(txt); if (j?.message) msg = j.message } catch {}
+        addToast(msg, 'error')
+        return
+      }
+      addToast('Função criada', 'success')
+      setNewPositionName('')
+      setShowNewPositionForm(false)
+      await fetchPositions()
+    } catch (e) {
+      console.error(e)
+      addToast('Erro de rede ao criar função', 'error')
+    }
+  }
+
   function resetForm() {
     setEditingId(null)
     setName('')
@@ -88,6 +140,10 @@ export default function WorkersContent({ readOnly = false, showTitle = true, onC
     setTerminationDate('')
     setDoesShifts(false)
     setDoesTravel(false)
+    setDontVacation(false)
+    setPositionId(null)
+    setShowNewPositionForm(false)
+    setNewPositionName('')
   }
 
   async function handleSubmit(e: any) {
@@ -100,6 +156,8 @@ export default function WorkersContent({ readOnly = false, showTitle = true, onC
       terminationDate: terminationDate || null,
       doesShifts,
       doesTravel,
+      dontVacation,
+      positionId: positionId || null,
     }
 
     const isEdit = editingId != null
@@ -154,6 +212,7 @@ export default function WorkersContent({ readOnly = false, showTitle = true, onC
       if (editingId === worker.id && !worker.terminationDate) {
         setTerminationDate(termination)
         setColor('')
+        setPositionId(null)
       }
       await fetchWorkers()
       onChange?.()
@@ -201,6 +260,8 @@ export default function WorkersContent({ readOnly = false, showTitle = true, onC
     setTerminationDate(worker.terminationDate ? worker.terminationDate.slice(0, 10) : '')
     setDoesShifts(!!worker.doesShifts)
     setDoesTravel(!!worker.doesTravel)
+    setDontVacation(!!worker.dontVacation)
+    setPositionId(worker.positionId ?? worker.position?.id ?? null)
     setIsModalOpen(true)
   }
 
@@ -211,7 +272,6 @@ export default function WorkersContent({ readOnly = false, showTitle = true, onC
 
   return (
     <>
-      {showTitle && <h1 style={{ margin: '0 0 20px 0', fontSize: 22, color: PALETTE.textPrimary }}>Trabalhadores</h1>}
 
       <div style={{ maxWidth: 480, marginBottom: 24, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>
@@ -303,109 +363,144 @@ export default function WorkersContent({ readOnly = false, showTitle = true, onC
         {displayed.length === 0 && <div style={{ color: PALETTE.textDisabled, padding: 16 }}>Nenhum trabalhador cadastrado</div>}
       </div>
 
-      {isModalOpen && (
-        <div style={{ position: 'fixed', inset: 0, background: '#00000066', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-          <div style={{ width: 520, maxWidth: '95%', background: PALETTE.cardBg, padding: 20, borderRadius: 8, boxShadow: '0 6px 24px rgba(0,0,0,0.2)' }}>
-            <h3 style={{ margin: '0 0 12px 0', fontSize: 16, color: PALETTE.textPrimary }}>
-              {editingId ? 'Editar Trabalhador' : 'Adicionar Trabalhador'}
-            </h3>
-            <form onSubmit={handleSubmit} style={{ display: 'grid', gap: 12 }}>
-                            <div style={{ display: 'flex', gap: 16 }}>
-                              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600, fontSize: 13, color: PALETTE.textSecondary }}>
-                                <input
-                                  type="checkbox"
-                                  checked={doesShifts}
-                                  onChange={e => setDoesShifts(e.target.checked)}
-                                />
-                                Faz plantões?
-                              </label>
-                              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600, fontSize: 13, color: PALETTE.textSecondary }}>
-                                <input
-                                  type="checkbox"
-                                  checked={doesTravel}
-                                  onChange={e => setDoesTravel(e.target.checked)}
-                                />
-                                Faz viagens?
-                              </label>
-                            </div>
-              <div>
-                <label style={{ display: 'block', fontWeight: 600, fontSize: 13, color: PALETTE.textSecondary, marginBottom: 4 }}>Nome</label>
-                <input placeholder="Nome do trabalhador" value={name} onChange={(e) => setName(e.target.value)} required style={inputStyle} />
-              </div>
-              <div>
-                <label style={{ display: 'block', fontWeight: 600, fontSize: 13, color: PALETTE.textSecondary, marginBottom: 4 }}>Data de contratação</label>
-                <input
-                  type="date"
-                  value={hireDate}
-                  onChange={(e) => setHireDate(e.target.value)}
-                  style={inputStyle}
-                />
-              </div>
-              {editingId && (
+      {portalContainer && createPortal(
+        isModalOpen ? (
+          <div style={{ position: 'fixed', inset: 0, background: '#00000066', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2000 }}>
+            <div style={{ width: 520, maxWidth: '95%', background: PALETTE.cardBg, padding: 20, borderRadius: 8, boxShadow: '0 6px 24px rgba(0,0,0,0.2)' }}>
+              <h3 style={{ margin: '0 0 12px 0', fontSize: 16, color: PALETTE.textPrimary }}>
+                {editingId ? 'Editar Trabalhador' : 'Adicionar Trabalhador'}
+              </h3>
+              <form onSubmit={handleSubmit} style={{ display: 'grid', gap: 12 }}>
                 <div>
-                  <label style={{ display: 'block', fontWeight: 600, fontSize: 13, color: PALETTE.textSecondary, marginBottom: 4 }}>Data de demissão</label>
+                  <label style={{ display: 'block', fontWeight: 600, fontSize: 13, color: PALETTE.textSecondary, marginBottom: 4 }}>Nome</label>
+                  <input placeholder="Nome do trabalhador" value={name} onChange={(e) => setName(e.target.value)} required style={inputStyle} />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontWeight: 600, fontSize: 13, color: PALETTE.textSecondary, marginBottom: 4 }}>Cargo</label>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <select
+                      value={positionId ?? ''}
+                      onChange={(e) => setPositionId(e.target.value ? Number(e.target.value) : null)}
+                      style={{ ...inputStyle, width: 220 }}
+                    >
+                      <option value="">Nenhum</option>
+                      {positions.map(p => (
+                        <option key={p.id} value={p.id}>{p.name}</option>
+                      ))}
+                    </select>
+                    <button type="button" onClick={() => setShowNewPositionForm(v => !v)} style={btnSmall}>
+                      {showNewPositionForm ? 'Cancelar' : 'Nova função'}
+                    </button>
+                  </div>
+                  {showNewPositionForm && (
+                    <div style={{ display: 'flex', gap: 8, marginTop: 8, alignItems: 'center' }}>
+                      <input placeholder="Nome da função" value={newPositionName} onChange={(e) => setNewPositionName(e.target.value)} style={{ ...inputStyle, flex: 1 }} />
+                      <button type="button" onClick={createPosition} style={btnSmall}>Criar</button>
+                    </div>
+                  )}
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontWeight: 600, fontSize: 13, color: PALETTE.textSecondary, marginBottom: 4 }}>Data de contratação</label>
                   <input
                     type="date"
-                    value={terminationDate}
-                    onChange={(e) => setTerminationDate(e.target.value)}
+                    value={hireDate}
+                    onChange={(e) => setHireDate(e.target.value)}
                     style={inputStyle}
                   />
                 </div>
-              )}
-              {editingId && terminationDate && hireDate && (
+                {editingId && (
+                  <div>
+                    <label style={{ display: 'block', fontWeight: 600, fontSize: 13, color: PALETTE.textSecondary, marginBottom: 4 }}>Data de demissão</label>
+                    <input
+                      type="date"
+                      value={terminationDate}
+                      onChange={(e) => setTerminationDate(e.target.value)}
+                      style={inputStyle}
+                    />
+                  </div>
+                )}
+                {editingId && terminationDate && hireDate && (
+                  <div>
+                    <label style={{ display: 'block', fontWeight: 600, fontSize: 13, color: PALETTE.textSecondary, marginBottom: 4 }}>Tempo trabalhado</label>
+                    <div style={{ padding: '8px 10px', background: PALETTE.backgroundSecondary, borderRadius: 6, color: PALETTE.textPrimary }}>
+                      {computeTenure(hireDate, terminationDate)}
+                    </div>
+                  </div>
+                )}
                 <div>
-                  <label style={{ display: 'block', fontWeight: 600, fontSize: 13, color: PALETTE.textSecondary, marginBottom: 4 }}>Tempo trabalhado</label>
-                  <div style={{ padding: '8px 10px', background: PALETTE.backgroundSecondary, borderRadius: 6, color: PALETTE.textPrimary }}>
-                    {computeTenure(hireDate, terminationDate)}
+                  <label style={{ display: 'block', fontWeight: 600, fontSize: 13, color: PALETTE.textSecondary, marginBottom: 6 }}>Cor</label>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <input
+                      type="color"
+                      value={color || '#000000'}
+                      onChange={(e) => setColor(e.target.value)}
+                      style={{ width: 42, height: 32, padding: 0, borderRadius: 6, border: `1px solid ${PALETTE.border}` }}
+                    />
+                    <input
+                      placeholder="#rrggbb"
+                      value={color}
+                      onChange={(e) => setColor(e.target.value)}
+                      style={{ ...inputStyle, width: 110 }}
+                    />
+                    <button type="button" onClick={() => setColor('')} style={btnSmall}>Limpar</button>
+                    <span style={{ width: 22, height: 22, borderRadius: '50%', background: color || PALETTE.border, display: 'inline-block', flexShrink: 0 }} />
                   </div>
                 </div>
-              )}
-              <div>
-                <label style={{ display: 'block', fontWeight: 600, fontSize: 13, color: PALETTE.textSecondary, marginBottom: 6 }}>Cor</label>
-                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                  <input
-                    type="color"
-                    value={color || '#000000'}
-                    onChange={(e) => setColor(e.target.value)}
-                    style={{ width: 42, height: 32, padding: 0, borderRadius: 6, border: `1px solid ${PALETTE.border}` }}
-                  />
-                  <input
-                    placeholder="#rrggbb"
-                    value={color}
-                    onChange={(e) => setColor(e.target.value)}
-                    style={{ ...inputStyle, width: 110 }}
-                  />
-                  <button type="button" onClick={() => setColor('')} style={btnSmall}>Limpar</button>
-                  <span style={{ width: 22, height: 22, borderRadius: '50%', background: color || PALETTE.border, display: 'inline-block', flexShrink: 0 }} />
+                <div style={{ display: 'flex', gap: 16 }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600, fontSize: 13, color: PALETTE.textSecondary }}>
+                    <input
+                      type="checkbox"
+                      checked={doesShifts}
+                      onChange={e => setDoesShifts(e.target.checked)}
+                    />
+                    Faz plantões?
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600, fontSize: 13, color: PALETTE.textSecondary }}>
+                    <input
+                      type="checkbox"
+                      checked={doesTravel}
+                      onChange={e => setDoesTravel(e.target.checked)}
+                    />
+                    Faz viagens?
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600, fontSize: 13, color: PALETTE.textSecondary }}>
+                    <input
+                      type="checkbox"
+                      checked={dontVacation}
+                      onChange={e => setDontVacation(e.target.checked)}
+                    />
+                    Não entra em férias
+                  </label>
                 </div>
-              </div>
-              <div style={{ display: 'flex', gap: 8, justifyContent: 'space-between', alignItems: 'center' }}>
-                {editingId && (() => {
-                  const worker = list.find(w => w.id === editingId)
-                  if (!worker || !worker.active || readOnly) return null
-                  return (
-                    <button
-                      type="button"
-                      onClick={() => fireWorker(worker)}
-                      style={{
-                        ...btnSmall,
-                        color: PALETTE.warning,
-                        background: `${PALETTE.warning}18`,
-                        borderColor: PALETTE.warning,
-                      }}
-                    >
-                      Demitir
-                    </button>
-                  )
-                })()}
-                <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                  <button type="button" onClick={() => { setIsModalOpen(false); resetForm(); }} style={btnSmall}>Cancelar</button>
-                  <button type="submit" style={btnPrimary}>{editingId ? 'Salvar' : 'Criar'}</button>
+                <div style={{ display: 'flex', gap: 8, justifyContent: 'space-between', alignItems: 'center' }}>
+                  {editingId && (() => {
+                    const worker = list.find(w => w.id === editingId)
+                    if (!worker || !worker.active || readOnly) return null
+                    return (
+                      <button
+                        type="button"
+                        onClick={() => fireWorker(worker)}
+                        style={{
+                          ...btnSmall,
+                          color: PALETTE.warning,
+                          background: `${PALETTE.warning}18`,
+                          borderColor: PALETTE.warning,
+                        }}
+                      >
+                        Demitir
+                      </button>
+                    )
+                  })()}
+                  <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                    <button type="button" onClick={() => { setIsModalOpen(false); resetForm(); }} style={btnSmall}>Cancelar</button>
+                    <button type="submit" style={btnPrimary}>{editingId ? 'Salvar' : 'Criar'}</button>
+                  </div>
                 </div>
-              </div>
-            </form>
+              </form>
+            </div>
           </div>
-        </div>
+        ) : null,
+        portalContainer
       )}
     </>
   )
