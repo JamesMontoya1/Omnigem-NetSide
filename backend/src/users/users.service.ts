@@ -3,21 +3,31 @@ import { PrismaService } from '../prisma/prisma.service';
 import { Prisma } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 
+const USER_SELECT = {
+  id: true,
+  email: true,
+  name: true,
+  createdAt: true,
+  workerId: true,
+  worker: { select: { id: true, name: true } },
+  permissionGroupId: true,
+  permissionGroup: {
+    select: {
+      id: true,
+      name: true,
+      isAdmin: true,
+      permissions: { select: { id: true, key: true, label: true } },
+    },
+  },
+};
+
 @Injectable()
 export class UsersService {
   constructor(private prisma: PrismaService) {}
 
   async findAll() {
     return this.prisma.user.findMany({
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        roles: true,
-        createdAt: true,
-        workerId: true,
-        worker: { select: { id: true, name: true } },
-      },
+      select: USER_SELECT,
       orderBy: { id: 'asc' },
     });
   }
@@ -25,15 +35,7 @@ export class UsersService {
   async findById(id: number) {
     return this.prisma.user.findUnique({
       where: { id },
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        roles: true,
-        createdAt: true,
-        workerId: true,
-        worker: { select: { id: true, name: true } },
-      },
+      select: USER_SELECT,
     });
   }
 
@@ -44,17 +46,18 @@ export class UsersService {
   async create(
     email: string,
     password: string,
-    roles: string[],
     name?: string,
     workerId: number | null = null,
+    permissionGroupId: number | null = null,
   ) {
     const hashed = await bcrypt.hash(password, 10);
-    const data: any = { email, password: hashed, roles: roles as any, name };
+    const data: any = { email, password: hashed, name };
     if (workerId !== null) data.workerId = workerId;
+    if (permissionGroupId !== null) data.permissionGroupId = permissionGroupId;
     try {
       return await this.prisma.user.create({
         data,
-        select: { id: true, email: true, name: true, roles: true, createdAt: true, workerId: true, worker: { select: { id: true, name: true } } },
+        select: USER_SELECT,
       });
     } catch (e: any) {
       if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
@@ -67,18 +70,18 @@ export class UsersService {
     }
   }
 
-  async update(id: number, data: { email?: string; password?: string; roles?: string[]; name?: string; workerId?: number | null }) {
+  async update(id: number, data: { email?: string; password?: string; name?: string; workerId?: number | null; permissionGroupId?: number | null }) {
     const updateData: any = {};
     if (data.email !== undefined) updateData.email = data.email;
     if (data.name !== undefined) updateData.name = data.name;
-    if (data.roles !== undefined) updateData.roles = data.roles;
     if (data.password) updateData.password = await bcrypt.hash(data.password, 10);
     if (data.workerId !== undefined) updateData.workerId = data.workerId;
+    if (data.permissionGroupId !== undefined) updateData.permissionGroupId = data.permissionGroupId;
     try {
       return await this.prisma.user.update({
         where: { id },
         data: updateData,
-        select: { id: true, email: true, name: true, roles: true, createdAt: true, workerId: true, worker: { select: { id: true, name: true } } },
+        select: USER_SELECT,
       });
     } catch (e: any) {
       if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
@@ -97,10 +100,11 @@ export class UsersService {
 
   async createAdmin(email: string, password: string, name?: string) {
     const hashed = await bcrypt.hash(password, 10);
+    const adminGroup = await this.prisma.permissionGroup.findFirst({ where: { isAdmin: true } });
     return this.prisma.user.upsert({
       where: { email },
-      update: { password: hashed, roles: ['ADMIN'], name },
-      create: { email, password: hashed, roles: ['ADMIN'], name },
+      update: { password: hashed, name, permissionGroupId: adminGroup?.id ?? null },
+      create: { email, password: hashed, name, permissionGroupId: adminGroup?.id ?? null },
     });
   }
 }

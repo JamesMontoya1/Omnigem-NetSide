@@ -46,21 +46,21 @@ export class WorkersController {
 
   @Post()
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ADMIN')
+  @Roles('workers.edit')
   create(@Body() body: CreateWorkerDto) {
     return this.svc.create(body);
   }
 
   @Put(':id')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ADMIN')
+  @Roles('workers.edit')
   update(@Param('id', ParseIntPipe) id: number, @Body() body: UpdateWorkerDto) {
     return this.svc.update(id, body);
   }
 
   @Delete(':id')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ADMIN')
+  @Roles('workers.edit')
   remove(@Param('id', ParseIntPipe) id: number, @Query('removeAssignments') removeAssignments?: string) {
     const flag = removeAssignments === '1' || removeAssignments === 'true' || removeAssignments === 'yes'
     return this.svc.remove(id, flag);

@@ -22,12 +22,13 @@ export class AuthController {
   @Get('me')
   @UseGuards(JwtAuthGuard)
   async me(@Req() req: any) {
-    const base = { id: req.user.sub, email: req.user.email, roles: req.user.roles } as any;
+    const base = { id: req.user.sub, email: req.user.email, isAdmin: req.user.isAdmin, permissions: req.user.permissions } as any;
     try {
       const user = await this.usersService.findById(req.user.sub);
       if (user) {
         base.name = (user as any).name ?? undefined;
         base.workerId = (user as any).workerId ?? undefined;
+        base.permissionGroup = (user as any).permissionGroup?.name ?? undefined;
       }
     } catch (e) {
       // ignore

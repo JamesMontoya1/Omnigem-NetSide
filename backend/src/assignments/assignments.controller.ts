@@ -26,21 +26,21 @@ export class AssignmentsController {
 
   @Post()
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ADMIN')
+  @Roles('shifts.edit')
   create(@Body() body: CreateAssignmentDto) {
     return this.svc.createManual(body);
   }
 
   @Post('generate')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ADMIN')
+  @Roles('shifts.edit')
   generate(@Body() body: GenerateDto) {
     return this.svc.generate(body.startDate, body.endDate);
   }
 
   @Delete(':id')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ADMIN')
+  @Roles('shifts.edit')
   remove(@Param('id', ParseIntPipe) id: number) {
     return this.svc.remove(id);
   }

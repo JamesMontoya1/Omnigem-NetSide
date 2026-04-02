@@ -81,28 +81,28 @@ export class TripsController {
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ADMIN')
+  @Roles('trips.edit')
   @Post()
   create(@Body() body: CreateTripDto) {
     return this.service.create(body)
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ADMIN')
+  @Roles('trips.edit')
   @Put(':id')
   update(@Param('id', ParseIntPipe) id: number, @Body() body: UpdateTripDto) {
     return this.service.update(id, body)
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ADMIN')
+  @Roles('trips.edit')
   @Put(':id/complete')
   complete(@Param('id', ParseIntPipe) id: number) {
     return this.service.complete(id)
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ADMIN')
+  @Roles('trips.edit')
   @Delete(':id')
   remove(@Param('id', ParseIntPipe) id: number) {
     return this.service.remove(id)

@@ -45,21 +45,22 @@ export class VacationsController {
   }
 
   @Post()
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('vacations.edit')
   create(@Body() body: CreateVacationDto) {
     return this.svc.create(body);
   }
 
   @Put(':id')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ADMIN')
+  @Roles('vacations.edit')
   update(@Param('id', ParseIntPipe) id: number, @Body() body: UpdateVacationDto) {
     return this.svc.update(id, body);
   }
 
   @Delete(':id')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ADMIN')
+  @Roles('vacations.edit')
   remove(@Param('id', ParseIntPipe) id: number) {
     return this.svc.remove(id);
   }

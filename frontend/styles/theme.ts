@@ -5,6 +5,7 @@ export const PALETTE = {
   backgroundSecondary: '#20242A',
   backgroundGradient: 'linear-gradient(180deg, #1A1D21 0%, #3A5A8A 100%)',
   cardBg: '#2A2F36',
+  cardAlt: '#1f2b3c',
   hoverBg: '#323844',
   rowHover: '#3B4756',
   rowOpen: '#334055',

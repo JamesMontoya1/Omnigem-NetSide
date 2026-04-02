@@ -3,6 +3,7 @@
     "module": "CommonJS",
     "target": "ES2020",
     "noImplicitAny": false,
+    "rootDir": "src",
     "outDir": "dist",
     "sourceMap": true,
     "experimentalDecorators": true,

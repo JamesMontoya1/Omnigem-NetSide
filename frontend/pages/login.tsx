@@ -27,7 +27,8 @@ export default function Login() {
       }
       const data = await res.json()
       localStorage.setItem('shifts_token', data.accessToken)
-      localStorage.setItem('shifts_roles', JSON.stringify(data.roles))
+      localStorage.setItem('shifts_permissions', JSON.stringify(data.permissions ?? []))
+      localStorage.setItem('shifts_isAdmin', String(data.isAdmin ?? false))
       router.push('/workspace')
     } catch (err) {
       setError('Erro de conexão com o servidor')
@@ -38,7 +39,8 @@ export default function Login() {
 
   function handleGuestAccess() {
     localStorage.setItem('shifts_token', '')
-    localStorage.setItem('shifts_roles', JSON.stringify(['GUEST']))
+    localStorage.setItem('shifts_permissions', JSON.stringify([]))
+    localStorage.setItem('shifts_isAdmin', 'false')
     router.push('/workspace')
   }
 

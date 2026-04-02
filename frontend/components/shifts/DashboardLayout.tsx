@@ -32,13 +32,15 @@ export default function DashboardLayout({ initialTab, dashboardContent }: {
 
   useEffect(() => {
     const token = typeof window !== 'undefined' ? localStorage.getItem('shifts_token') : null
-    let storedRoles: string[] = []
-    try { storedRoles = JSON.parse(localStorage.getItem('shifts_roles') || '[]') } catch {}
-    if (token === null && storedRoles.length === 0) {
+    const isAdminFlag = localStorage.getItem('shifts_isAdmin') === 'true'
+    let storedPerms: string[] = []
+    try { storedPerms = JSON.parse(localStorage.getItem('shifts_permissions') || '[]') } catch {}
+    if (token === null && storedPerms.length === 0 && !isAdminFlag) {
       router.push('/login')
       return
     }
-    setRole(Array.isArray(storedRoles) && storedRoles.includes('ADMIN') ? 'admin' : 'guest')
+    setRole(isAdminFlag ? 'admin' : 'guest')
+    // canEdit for shifts section comes from shifts.edit permission or admin
   }, [router])
 
   useEffect(() => {
@@ -50,17 +52,25 @@ export default function DashboardLayout({ initialTab, dashboardContent }: {
 
   function logout() {
     localStorage.removeItem('shifts_token')
-    localStorage.removeItem('shifts_roles')
+      localStorage.removeItem('shifts_permissions')
+      localStorage.removeItem('shifts_isAdmin')
     router.push('/login')
   }
 
   const isAdmin = role === 'admin';
+  const canEdit = (() => {
+    if (isAdmin) return true
+    try {
+      const perms: string[] = JSON.parse(localStorage.getItem('shifts_permissions') || '[]')
+      return perms.includes('shifts.edit')
+    } catch { return false }
+  })();
 
   function renderContent() {
     switch (activeTab) {
-      case 'workers': return <WorkersContent readOnly={!isAdmin} />;
-      case 'holidays': return <HolidaysContent readOnly={!isAdmin} />;
-      case 'assignments': return <AssignmentsContent readOnly={!isAdmin} />;
+      case 'workers': return <WorkersContent readOnly={!canEdit} />;
+      case 'holidays': return <HolidaysContent readOnly={!canEdit} />;
+      case 'assignments': return <AssignmentsContent readOnly={!canEdit} />;
       default: return dashboardContent ?? null;
     }
   }

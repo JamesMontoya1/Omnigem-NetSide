@@ -17,7 +17,8 @@
     "start": "dotenv -- concurrently \"npm --prefix backend run start\" \"npm --prefix frontend run start\"",
     "prisma:generate": "dotenv -- prisma generate --schema=prisma/schema.prisma && npm run seed",
     "prisma:migrate": "dotenv -- prisma migrate dev --schema=prisma/schema.prisma && npm run seed",
-    "seed": "dotenv -- npm --prefix backend run seed"
+    "seed": "dotenv -- npm --prefix backend run seed",
+    "tunnel": "powershell -ExecutionPolicy Bypass -File scripts/tunnel.ps1"
   },
   "devDependencies": {
     "concurrently": "^7.6.0",

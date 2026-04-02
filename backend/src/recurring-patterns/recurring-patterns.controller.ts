@@ -40,21 +40,21 @@ export class RecurringPatternsController {
 
   @Post()
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ADMIN')
+  @Roles('shifts.edit')
   create(@Body() body: CreateRecurringPatternDto) {
     return this.svc.create(body as any);
   }
 
   @Put(':id')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ADMIN')
+  @Roles('shifts.edit')
   update(@Param('id', ParseIntPipe) id: number, @Body() body: UpdateRecurringPatternDto) {
     return this.svc.update(id, body as any);
   }
 
   @Delete(':id')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ADMIN')
+  @Roles('shifts.edit')
   remove(@Param('id', ParseIntPipe) id: number) {
     return this.svc.remove(id);
   }

@@ -8,20 +8,34 @@ datasource db {
   url      = env("DATABASE_URL")
 }
   
-enum Role {
-  ADMIN
-  GUEST
-  TRAVELER
-  SPED_MANAGER
+model Permission {
+  id          Int                @id @default(autoincrement())
+  key         String             @unique
+  label       String
+  description String?
+  createdAt   DateTime           @default(now())
+  groups      PermissionGroup[]
+}
+
+model PermissionGroup {
+  id          Int          @id @default(autoincrement())
+  name        String       @unique
+  description String?
+  isAdmin     Boolean      @default(false)
+  permissions Permission[]
+  users       User[]
+  createdAt   DateTime     @default(now())
 }
 
 model User {
-  id        Int      @id @default(autoincrement())
-  email     String   @unique
-  password  String?
-  roles     Role[]   @default([GUEST])
-  name      String?
-   
+  id                Int              @id @default(autoincrement())
+  email             String           @unique
+  password          String?
+  name              String?
+
+  permissionGroupId Int?
+  permissionGroup   PermissionGroup? @relation(fields: [permissionGroupId], references: [id])
+
   workerId  Int?     @unique
   worker    Worker?  @relation("WorkerUser", fields: [workerId], references: [id])
   createdAt DateTime @default(now())
@@ -38,8 +52,11 @@ model Worker {
   hireDate        DateTime?
   terminationDate DateTime?
 
+  pontoSimplesUserId Int?   @unique // ID do usuário no PontoSimples
+
   positionId        Int?
   position          Position? @relation("Positions", fields: [positionId], references: [id])
+  timePunches       TimePunch[]
   user              User?     @relation("WorkerUser")
   recurringPatterns RecurringPattern[]
   assignments       Assignment[]
@@ -115,11 +132,11 @@ model Vacation {
   worker    Worker   @relation(fields: [workerId], references: [id])
   startDate DateTime // Data de início das férias
   endDate   DateTime // Data final das férias
-  daysUsed  Int      // Dias usados (máx 30 por período aquisitivo)
+  daysUsed  Int      // Dias usados
   sold      Boolean  @default(false) // Vendeu férias?
   active    Boolean  @default(true)  // Lançamento ativo?
   note      String?  // Observações
-
+  
   request   Int?      // 0 - Solicitação; 1 - Aprovado; 2 - Rejeitado; se for = null, é lançado como aprovado (para não precisar aprovar cada lançamento antigo)
   createdAt DateTime @default(now())
 }
@@ -267,4 +284,39 @@ model Trip {
   updatedAt            DateTime @updatedAt
 
   tripCities           TripCity[]
+}
+
+enum TimePunchType {
+  IN
+  OUT
+  BREAK_START
+  BREAK_END
+}
+
+enum TimePunchSource {
+  MANUAL
+  IMPORT_CSV
+  PONTOSIMPLES
+}
+
+model TimePunch {
+  id         Int             @id @default(autoincrement())
+  workerId   Int?
+  worker     Worker?         @relation(fields: [workerId], references: [id])
+
+  occurredAt DateTime
+  type       TimePunchType
+  source     TimePunchSource @default(MANUAL)
+
+  // Identificador do evento no sistema de origem (quando importar/sincronizar)
+  externalId String?
+
+  // Payload bruto/extra (útil para auditoria e troubleshooting)
+  raw        Json?
+
+  createdAt  DateTime        @default(now())
+
+  @@index([workerId, occurredAt])
+  @@index([source, externalId])
+  @@unique([source, externalId])
 }

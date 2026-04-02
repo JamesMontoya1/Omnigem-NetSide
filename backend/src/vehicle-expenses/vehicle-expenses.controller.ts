@@ -20,21 +20,21 @@ export class VehicleExpensesController {
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ADMIN')
+  @Roles('vehicles.edit')
   @Post()
   create(@Body() body: any) {
     return this.svc.create(body)
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ADMIN')
+  @Roles('vehicles.edit')
   @Put(':id')
   update(@Param('id', ParseIntPipe) id: number, @Body() body: any) {
     return this.svc.update(id, body)
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ADMIN')
+  @Roles('vehicles.edit')
   @Delete(':id')
   remove(@Param('id', ParseIntPipe) id: number) {
     return this.svc.remove(id)

@@ -17,9 +17,13 @@ import { VehiclesModule } from './vehicles/vehicles.module';
 import { VehicleExpensesModule } from './vehicle-expenses/vehicle-expenses.module';
 import { VehicleExpenseCategoriesModule } from './vehicle-expense-categories/vehicle-expense-categories.module';
 import { AppController } from './app.controller';
+import { TimePunchesModule } from './time-punches/time-punches.module';
+import { PontoSimplesModule } from './pontosimples/pontosimples.module';
+import { PermissionsModule } from './permissions/permissions.module';
+import { PermissionGroupsModule } from './permission-groups/permission-groups.module';
 
 @Module({
-  imports: [PrismaModule, UsersModule, AuthModule, WorkersModule, HolidaysModule, RecurringPatternsModule, AssignmentsModule, RotationsModule, VacationsModule, TripsModule, CitiesModule, VehiclesModule, VehicleExpensesModule, VehicleExpenseCategoriesModule, ServiceTypesModule, PositionsModule],
+  imports: [PrismaModule, UsersModule, AuthModule, WorkersModule, HolidaysModule, RecurringPatternsModule, AssignmentsModule, RotationsModule, VacationsModule, TripsModule, CitiesModule, VehiclesModule, VehicleExpensesModule, VehicleExpenseCategoriesModule, ServiceTypesModule, PositionsModule, TimePunchesModule, PontoSimplesModule, PermissionsModule, PermissionGroupsModule],
   controllers: [AppController],
   providers: [PrismaService],
 })

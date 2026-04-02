@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useRouter } from 'next/router';
 import { API_BASE as API } from '../../config/api';
 import { authHeaders, jsonAuthHeaders } from '../../config/api';
@@ -58,11 +58,14 @@ export default function CalendarPage() {
     return new Date(Date.UTC(now.getFullYear(), now.getMonth(), 1));
   });
   const [isAdmin, setIsAdmin] = useState(false);
+  const [canEdit, setCanEdit] = useState(false);
   useEffect(() => {
     try {
-      const roles = JSON.parse(localStorage.getItem('shifts_roles') || '[]');
-      setIsAdmin(Array.isArray(roles) && roles.includes('ADMIN'));
-    } catch { setIsAdmin(false); }
+      const isAdm = localStorage.getItem('shifts_isAdmin') === 'true';
+      const perms: string[] = JSON.parse(localStorage.getItem('shifts_permissions') || '[]');
+      setIsAdmin(isAdm);
+      setCanEdit(isAdm || perms.includes('shifts.edit'));
+    } catch { setIsAdmin(false); setCanEdit(false); }
   }, []);
   const MONTH_NAMES = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
   const [selMonth, setSelMonth] = useState<number>(viewDate.getUTCMonth());
@@ -114,6 +117,12 @@ export default function CalendarPage() {
   const [showWorkersModal, setShowWorkersModal] = useState(false);
   const [showHolidaysModal, setShowHolidaysModal] = useState(false);
   const [showAssignmentsModal, setShowAssignmentsModal] = useState(false);
+
+  const notifRef = useRef<HTMLButtonElement | null>(null)
+  const [showNotifications, setShowNotifications] = useState(false)
+  const [notifPos, setNotifPos] = useState<{ top: number; left: number } | null>(null)
+  const [hoveredNotif, setHoveredNotif] = useState<string | null>(null)
+
   type Tab = 'panel' | 'reports'
   const [tab, setTab] = useState<Tab>('panel')
 
@@ -160,14 +169,19 @@ export default function CalendarPage() {
   useEffect(() => {
     Promise.all([loadWorkers(), loadRotations()]).catch(() => {})
   }, []);
+  useEffect(() => {
+    loadCalendar(new Date());
+  }, [loadCalendar]);
   useEffect(() => { loadCalendar(viewDate); }, [viewDate, loadCalendar]);
 
   const upcomingNotifiedThisWeek = useMemo(() => {
     const start = weekStartUTC(new Date());
+    const todayIso = toISO(new Date());
     const map = new Map<number, { name: string | null; color?: string | null; dates: string[] }>();
     for (let i = 0; i < 7; i++) {
       const day = addDays(start, i);
       const iso = toISO(day);
+      if (iso <= todayIso) continue;
       const dayData = calendar[iso];
       const entries = dayData?.entries ?? [];
 
@@ -193,6 +207,8 @@ export default function CalendarPage() {
     }
     return Array.from(map.entries()).map(([id, v]) => ({ id, ...v }));
   }, [calendar, rotations, workers]);
+
+  const notifCount = upcomingNotifiedThisWeek.length
 
   const prevMonth = () => { const c = new Date(viewDate); c.setUTCMonth(c.getUTCMonth() - 1); setViewDate(c); };
   const nextMonth = () => { const c = new Date(viewDate); c.setUTCMonth(c.getUTCMonth() + 1); setViewDate(c); };
@@ -265,11 +281,39 @@ export default function CalendarPage() {
       <div style={{ padding: '12px 24px', paddingLeft: 80, display: 'flex', alignItems: 'center', gap: 12, borderBottom: `1px solid ${PALETTE.border}`, flexShrink: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <h1 style={{ margin: 0, fontSize: 22, marginLeft: 8 }}>Plantões</h1>
-          {isAdmin && <button onClick={() => setShowWorkersModal(true)} style={btnNav}>👷 Trabalhadores</button>}
-          {isAdmin && <button onClick={() => setShowHolidaysModal(true)} style={btnNav}>🎉 Feriados</button>}
-          {isAdmin && <button onClick={() => setShowAssignmentsModal(true)} style={btnNav}>📋 Atribuições</button>}
+          {canEdit && <button onClick={() => setShowWorkersModal(true)} style={btnNav}>👷 Trabalhadores</button>}
+          {canEdit && <button onClick={() => setShowHolidaysModal(true)} style={btnNav}>🎉 Feriados</button>}
+          {canEdit && <button onClick={() => setShowAssignmentsModal(true)} style={btnNav}>📋 Atribuições</button>}
         </div>
         <div style={{ flex: 1 }} />
+        <button
+          ref={notifRef}
+          type="button"
+          onClick={() => {
+            if (showNotifications) { setShowNotifications(false); return }
+            const rect = notifRef.current?.getBoundingClientRect()
+            const popWidth = 420
+            if (rect) {
+              const left = Math.max(8, Math.min(rect.right - popWidth, window.innerWidth - popWidth - 8))
+              setNotifPos({ top: rect.bottom + 8 + window.scrollY, left })
+            }
+            setShowNotifications(true)
+          }}
+          title="Notificações"
+          style={{
+            ...btnNav,
+            marginLeft: 8,
+            background: notifCount > 0 ? PALETTE.success : PALETTE.hoverBg,
+            color: PALETTE.textPrimary,
+            border: `1px solid ${PALETTE.border}`,
+            position: 'relative'
+          }}
+        >
+          🔔
+          {notifCount > 0 && (
+            <span style={{ position: 'absolute', top: -6, right: -6, minWidth: 18, height: 18, borderRadius: 9, background: '#FF3B30', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, padding: '0 6px' }}>{notifCount}</span>
+          )}
+        </button>
         {(['panel', 'reports'] as Tab[]).map(t => (
           <button key={t} onClick={() => setTab(t)} style={{
             ...btnNav,
@@ -288,7 +332,7 @@ export default function CalendarPage() {
             <strong style={{ fontSize: 16, color: PALETTE.textPrimary }}>Rodízios</strong>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
               <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                {isAdmin && <button onClick={() => setRotModal('new')} style={btnPrimary}>+ Novo</button>}
+                {canEdit && <button onClick={() => setRotModal('new')} style={btnPrimary}>+ Novo</button>}
                 <button onClick={() => setShowAllRotations(s => !s)} style={btnSmall}>{showAllRotations ? 'Mostrar apenas sem final' : 'Exibir todos'}</button>
               </div>
             </div>
@@ -318,8 +362,8 @@ export default function CalendarPage() {
                       </div>
                     )}
                     <div style={{ marginTop: 8, display: 'flex', gap: 6 }}>
-                      {isAdmin && <button onClick={() => setRotModal(rot)} style={btnSmallBlue}>Editar</button>}
-                      {isAdmin && <button onClick={async () => { if (confirm('Apagar este rodízio?')) { await fetch(`${API}/rotations/${rot.id}`, { method: 'DELETE', headers: authHeaders() }); await loadRotations(); await loadCalendar(viewDate); } }} style={btnSmallRed}>Apagar</button>}
+                      {canEdit && <button onClick={() => setRotModal(rot)} style={btnSmallBlue}>Editar</button>}
+                      {canEdit && <button onClick={async () => { if (confirm('Apagar este rodízio?')) { await fetch(`${API}/rotations/${rot.id}`, { method: 'DELETE', headers: authHeaders() }); await loadRotations(); await loadCalendar(viewDate); } }} style={btnSmallRed}>Apagar</button>}
                     </div>
                   </div>
                 ))}
@@ -636,7 +680,7 @@ export default function CalendarPage() {
                 dayData={calendar[selectedDay] ?? null}
                 workers={workers}
                 rotations={rotations}
-                isAdmin={isAdmin}
+                isAdmin={canEdit}
                 onCreateRotation={(d) => { setRotModal('new'); setRotScheduleFrom(d); }}
                 onClose={() => setModalOpen(false)}
                 onHolidayUpdated={async () => { await loadCalendar(viewDate) }}
@@ -785,6 +829,63 @@ export default function CalendarPage() {
               <button onClick={() => { setShowAssignmentsModal(false); loadCalendar(viewDate); }} style={btnSmall}>✕ Fechar</button>
             </div>
             <AssignmentsContent />
+          </div>
+        </div>
+      )}
+
+      {showNotifications && notifPos && (
+        <div id="shifts-notif-popover" style={{ position: 'absolute', top: notifPos.top, left: notifPos.left, width: 420, zIndex: 2000 }}>
+          <div style={{
+            background: PALETTE.cardBg,
+            border: `1px solid ${PALETTE.border}`,
+            borderRadius: 12,
+            padding: 10,
+            boxShadow: '0 20px 60px rgba(2,6,23,0.18), 0 8px 24px rgba(2,6,23,0.12)',
+            maxHeight: '48vh',
+            overflowY: 'auto'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h3 style={{ margin: 0, fontSize: 16 }}>🔔 Notificações</h3>
+              <button type="button" onClick={() => setShowNotifications(false)} style={btnNav as any}>✕</button>
+            </div>
+
+            {upcomingNotifiedThisWeek.length > 0 && (
+              <div style={{ marginTop: 10 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: PALETTE.success, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>📋 Plantões Próximos (esta semana)</div>
+                <div style={{ display: 'grid', gap: 8 }}>
+                  {upcomingNotifiedThisWeek.map(u => (
+                    <div
+                      key={`shift-${u.id}`}
+                      onMouseEnter={() => setHoveredNotif(`shift-${u.id}`)}
+                      onMouseLeave={() => setHoveredNotif(null)}
+                      style={{
+                        padding: 6,
+                        borderRadius: 6,
+                        background: hoveredNotif === `shift-${u.id}` ? `${PALETTE.primary}11` : PALETTE.cardBg,
+                        border: `1px solid ${PALETTE.border}`,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 8,
+                        minHeight: 44,
+                      }}
+                    >
+                      <div style={{ width: 12, height: 12, borderRadius: '50%', background: u.color ?? PALETTE.border }} />
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 13, fontWeight: 700 }}>{u.name ? (
+                          <span style={{ textDecoration: (u as any).inactive ? 'line-through' : undefined }}>{u.name}</span>
+                        ) : '—'}</div>
+                        <div style={{ fontSize: 12, color: PALETTE.textSecondary }}>{u.dates.length} dia(s) esta semana</div>
+                      </div>
+                      <div style={{ fontSize: 12, color: PALETTE.success }}>{u.dates.length}d</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {notifCount === 0 && (
+              <div style={{ marginTop: 8, color: PALETTE.textSecondary }}>Nenhuma notificação.</div>
+            )}
           </div>
         </div>
       )}
