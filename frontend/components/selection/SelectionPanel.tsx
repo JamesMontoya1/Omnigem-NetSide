@@ -122,8 +122,9 @@ export default function SelectionPanel({ embedded = false }: { embedded?: boolea
 
   useEffect(() => {
     try {
-      const roles = JSON.parse(localStorage.getItem('shifts_roles') || '[]')
-      setIsGuest(Array.isArray(roles) && roles.includes('GUEST'))
+    const perms = JSON.parse(localStorage.getItem('shifts_permissions') || '[]')
+    const isAdm = localStorage.getItem('shifts_isAdmin') === 'true'
+    setIsGuest(!isAdm && (!Array.isArray(perms) || perms.length === 0))
     } catch (e) {
       setIsGuest(false)
     }
@@ -367,7 +368,7 @@ export default function SelectionPanel({ embedded = false }: { embedded?: boolea
           id: 'vehicles',
           label: 'Veículos — ações próximas',
           detail: vehicleLines,
-          route: '/trips/VehiclesTab',
+          route: '/trips',
           severity: 'warning',
         })
       }

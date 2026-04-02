@@ -31,21 +31,21 @@ export class VehiclesController {
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ADMIN')
+  @Roles('vehicles.edit')
   @Post()
   create(@Body() body: CreateVehicleDto) {
     return this.service.create(body)
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ADMIN')
+  @Roles('vehicles.edit')
   @Put(':id')
   update(@Param('id', ParseIntPipe) id: number, @Body() body: UpdateVehicleDto) {
     return this.service.update(id, body)
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ADMIN')
+  @Roles('vehicles.edit')
   @Delete(':id')
   remove(@Param('id', ParseIntPipe) id: number) {
     return this.service.remove(id)

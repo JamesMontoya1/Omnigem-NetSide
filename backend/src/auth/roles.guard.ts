@@ -24,15 +24,19 @@ export class RolesGuard implements CanActivate {
     const request = context.switchToHttp().getRequest();
     const user = request.user;
 
-    if (!user || !user.roles || !Array.isArray(user.roles)) {
-      throw new ForbiddenException('Acesso negado: roles não encontradas');
+    if (!user) {
+      throw new ForbiddenException('Acesso negado');
     }
 
-    const hasRole = user.roles.some((r: string) => requiredRoles.includes(r));
-    if (!hasRole) {
-      throw new ForbiddenException('Acesso negado: permissão insuficiente');
+    // Admin always bypasses
+    if (user.isAdmin) return true;
+
+    // Permission-based check
+    if (user.permissions && Array.isArray(user.permissions)) {
+      const has = requiredRoles.some((r: string) => user.permissions.includes(r));
+      if (has) return true;
     }
 
-    return true;
+    throw new ForbiddenException('Acesso negado: permissão insuficiente');
   }
 }

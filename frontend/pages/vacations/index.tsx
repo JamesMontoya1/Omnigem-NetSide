@@ -119,6 +119,7 @@ export default function VacationsPage() {
   const { addToast } = useToast()
 
   const [isAdmin, setIsAdmin] = useState(false)
+  const [canEdit, setCanEdit] = useState(false)
 
   const [tab, setTab] = useState<Tab>('dashboard')
   const [workers, setWorkers] = useState<Worker[]>([])
@@ -173,6 +174,10 @@ export default function VacationsPage() {
   const [showNotifications, setShowNotifications] = useState(false)
   const [notifPos, setNotifPos] = useState<{ top: number; left: number } | null>(null)
   const [hoveredNotif, setHoveredNotif] = useState<string | null>(null)
+
+  const overdueRef = useRef<HTMLButtonElement | null>(null)
+  const [showOverdue, setShowOverdue] = useState(false)
+  const [overduePos, setOverduePos] = useState<{ top: number; left: number } | null>(null)
 
   useEffect(() => {
     if (selectedDay) {
@@ -249,9 +254,11 @@ export default function VacationsPage() {
 
   useEffect(() => {
     try {
-      const roles = JSON.parse(localStorage.getItem('shifts_roles') || '[]')
-      setIsAdmin(Array.isArray(roles) && roles.includes('ADMIN'))
-    } catch { setIsAdmin(false) }
+      const isAdm = localStorage.getItem('shifts_isAdmin') === 'true'
+      const perms: string[] = JSON.parse(localStorage.getItem('shifts_permissions') || '[]')
+      setIsAdmin(isAdm)
+      setCanEdit(isAdm || perms.includes('vacations.edit'))
+    } catch { setIsAdmin(false); setCanEdit(false) }
     load();
     (async () => {
       try {
@@ -264,18 +271,7 @@ export default function VacationsPage() {
     })()
   }, [])
 
-  useEffect(() => {
-    if (!summary || summary.length === 0) return
-    summary.forEach(s => {
-      const days = daysUntilNextVacation(s.hireDate)
-      if (days !== null && days <= 30 && !shownAnniv.includes(s.id)) {
-        const name = s.name
-        const msg = days === 0 ? `Hoje é aniversário de contratação de ${name}!` : `Faltam ${days} dias para o aniversário de contratação de ${name}`
-        addToast(msg, 'info', 8000, 'bottom-right')
-        setShownAnniv(prev => [...prev, s.id])
-      }
-    })
-  }, [summary, shownAnniv, addToast])
+  // Anniversary alerts are now shown in the notifications popover instead of toasts
 
   useEffect(() => {
     const id = setInterval(() => setNowTick(Date.now()), 1000)
@@ -367,7 +363,7 @@ export default function VacationsPage() {
       daysUsed: Number(formDays),
       sold: formSold,
         note: editId ? (formNote === '' ? null : formNote) : (formNote || undefined),
-        request: isAdmin ? undefined : 0,
+        request: canEdit ? undefined : 0,
     }
     try {
       const url = editId ? `${API_BASE}/vacations/${editId}` : `${API_BASE}/vacations`
@@ -426,7 +422,7 @@ export default function VacationsPage() {
   function openScheduleModal(prefillDate?: string) {
     resetForm()
     if (prefillDate) setFormStart(prefillDate)
-    if (currentUserWorkerId && !isAdmin) setFormWorkerId(currentUserWorkerId)
+    if (currentUserWorkerId && !canEdit) setFormWorkerId(currentUserWorkerId)
     setShowScheduleModal(true)
   }
 
@@ -465,6 +461,16 @@ export default function VacationsPage() {
 
   const pendingRequests = vacations.filter(v => v.request === 0)
 
+  const anniversaryAlerts = summary
+    .map(s => {
+      const days = daysUntilNextVacation(s.hireDate)
+      if (days === null || days > 30) return null
+      return { id: s.id, name: s.name, color: s.color, days, hireDate: s.hireDate }
+    })
+    .filter(Boolean) as { id: number; name: string; color?: string; days: number; hireDate: string }[]
+
+  const notifCount = upcomingAll.length + anniversaryAlerts.length
+
   const MONTHS = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro']
   const WEEKDAYS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
 
@@ -486,9 +492,9 @@ export default function VacationsPage() {
     <main style={{ height: '100vh', display: 'flex', flexDirection: 'column', backgroundColor: PALETTE.background, fontFamily: 'system-ui, sans-serif', color: PALETTE.textPrimary }}>
       <div style={{ padding: '16px 24px', paddingLeft: 80, display: 'flex', alignItems: 'center', gap: 16, borderBottom: `1px solid ${PALETTE.border}` }}>
         <h1 style={{ margin: 0, fontSize: 22 }}>Férias</h1>
-        {isAdmin && <button onClick={() => setShowWorkersModal(true)} style={btnNav}>👷 Trabalhadores</button>}
-        {isAdmin && <button onClick={() => setShowHolidaysModal(true)} style={btnNav}>🎉 Feriados</button>}
-        {isAdmin && <button onClick={() => { resetForm(); setShowScheduleModal(true) }} style={{ ...btnNav, background: PALETTE.success, color: '#fff', border: 'none' }}>+ Agendar</button>}
+        {canEdit && <button onClick={() => setShowWorkersModal(true)} style={btnNav}>👷 Trabalhadores</button>}
+        {canEdit && <button onClick={() => setShowHolidaysModal(true)} style={btnNav}>🎉 Feriados</button>}
+        {canEdit && <button onClick={() => { resetForm(); setShowScheduleModal(true) }} style={{ ...btnNav, background: PALETTE.success, color: '#fff', border: 'none' }}>+ Agendar</button>}
         <select
           value={filterWorkerId}
           onChange={e => setFilterWorkerId(e.target.value ? Number(e.target.value) : '')}
@@ -498,40 +504,69 @@ export default function VacationsPage() {
           {workers.filter(w => w.active).map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
         </select>
         <div style={{ flex: 1 }} />
-        {!isAdmin && (
+        {!canEdit && (
           <button onClick={() => openScheduleModal()} style={{ ...btnNav, background: PALETTE.primary, color: '#fff', border: 'none' }}>+ Agendar</button>
         )}
 
-        {isAdmin && (
+        {canEdit && pendingRequests.length > 0 && (
           <button
-            ref={notifRef}
+            ref={overdueRef}
             type="button"
             onClick={() => {
-              if (showNotifications) { setShowNotifications(false); return }
-              const rect = notifRef.current?.getBoundingClientRect()
+              if (showOverdue) { setShowOverdue(false); return }
+              setShowNotifications(false)
+              const rect = overdueRef.current?.getBoundingClientRect()
               const popWidth = 420
               if (rect) {
                 const left = Math.max(8, Math.min(rect.right - popWidth, window.innerWidth - popWidth - 8))
-                setNotifPos({ top: rect.bottom + 8 + window.scrollY, left })
+                setOverduePos({ top: rect.bottom + 8 + window.scrollY, left })
               }
-              setShowNotifications(true)
+              setShowOverdue(true)
             }}
-            title="Solicitações"
+            title="Solicitações pendentes"
             style={{
               ...btnNav,
               marginLeft: 8,
-              background: pendingRequests.length > 0 ? PALETTE.success : PALETTE.hoverBg,
-              color: PALETTE.textPrimary,
+              background: PALETTE.error,
+              color: '#fff',
               border: `1px solid ${PALETTE.border}`,
               position: 'relative'
             }}
           >
-            🔔
-            {pendingRequests.length > 0 && (
-              <span style={{ position: 'absolute', top: -6, right: -6, minWidth: 18, height: 18, borderRadius: 9, background: '#FF3B30', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, padding: '0 6px' }}>{pendingRequests.length}</span>
-            )}
+            ⚠️
+            <span style={{ position: 'absolute', top: -6, right: -6, minWidth: 18, height: 18, borderRadius: 9, background: '#FF3B30', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, padding: '0 6px' }}>{pendingRequests.length}</span>
           </button>
         )}
+
+        <button
+          ref={notifRef}
+          type="button"
+          onClick={() => {
+            if (showNotifications) { setShowNotifications(false); return }
+            setShowOverdue(false)
+            const rect = notifRef.current?.getBoundingClientRect()
+            const popWidth = 420
+            if (rect) {
+              const left = Math.max(8, Math.min(rect.right - popWidth, window.innerWidth - popWidth - 8))
+              setNotifPos({ top: rect.bottom + 8 + window.scrollY, left })
+            }
+            setShowNotifications(true)
+          }}
+          title="Notificações"
+          style={{
+            ...btnNav,
+            marginLeft: 8,
+            background: notifCount > 0 ? PALETTE.success : PALETTE.hoverBg,
+            color: PALETTE.textPrimary,
+            border: `1px solid ${PALETTE.border}`,
+            position: 'relative'
+          }}
+        >
+          🔔
+          {notifCount > 0 && (
+            <span style={{ position: 'absolute', top: -6, right: -6, minWidth: 18, height: 18, borderRadius: 9, background: '#FF3B30', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, padding: '0 6px' }}>{notifCount}</span>
+          )}
+        </button>
         
         {(['dashboard', 'list'] as Tab[]).map(t => (
           <button key={t} onClick={() => setTab(t)} style={{
@@ -685,7 +720,7 @@ export default function VacationsPage() {
                               <div style={{ fontSize: 14, fontWeight: 500, background: '#FF6A00', color: '#fff', padding: '6px 8px', borderRadius: 4 }}>{h.name ?? 'Feriado'}</div>
                               <div style={{ fontSize: 13, color: PALETTE.textSecondary }}>📅 {fmtDate(h.date)}</div>
                             </div>
-                            {isAdmin && (
+                            {canEdit && (
                               <div style={{ display: 'flex', gap: 8 }}>
                                 <button onClick={() => { setEditingHolidayId(h.id); setEditingHolidayName(h.name || ''); setEditingHolidayRecurring(!!h.recurring) }} style={{ background: 'transparent', border: '1px solid rgba(255,255,255,0.12)', color: PALETTE.textPrimary, padding: '6px 8px', borderRadius: 6 }}>Editar</button>
                                 <button onClick={async () => { if (!confirm('Apagar este feriado?')) return; try { await fetch(`${API_BASE}/holidays/${h.id}`, { method: 'DELETE', headers: authHeaders() }); await load() } catch (err) { console.error(err) } }} style={{ background: PALETTE.error, color: '#fff', border: 'none', padding: '6px 8px', borderRadius: 6 }}>Apagar</button>
@@ -740,7 +775,7 @@ export default function VacationsPage() {
                           </div>
                           {v.note && <div style={{ fontSize: 11, color: PALETTE.textSecondary, marginTop: 2, fontStyle: 'italic' }}>({v.note})</div>}
                         </div>
-                        {isAdmin && (
+                        {canEdit && (
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                             <button onClick={() => { startEdit(v) }} style={btnSmall}>Editar</button>
                             <button onClick={() => { setPanelOpen(false); setTimeout(() => onDelete(v.id), 300) }} style={{ ...btnSmallRed }}>Apagar</button>
@@ -771,7 +806,7 @@ export default function VacationsPage() {
                 )}
               </div>
 
-                {isAdmin && (
+                {canEdit && (
                 <div style={{ padding: '16px 24px', borderTop: `1px solid ${PALETTE.border}`, background: PALETTE.backgroundSecondary }}>
                   <div style={{ display: 'flex', gap: 8 }}>
                     <button
@@ -851,8 +886,8 @@ export default function VacationsPage() {
           </div>
         </div>
       )}
-      {showNotifications && notifPos && (
-        <div id="vacations-notif-popover" style={{ position: 'absolute', top: notifPos.top, left: notifPos.left, width: 420, zIndex: 2000 }}>
+      {showOverdue && overduePos && (
+        <div id="vacations-overdue-popover" style={{ position: 'absolute', top: overduePos.top, left: overduePos.left, width: 420, zIndex: 2000 }}>
           <div style={{
             background: PALETTE.cardBg,
             border: `1px solid ${PALETTE.border}`,
@@ -863,8 +898,8 @@ export default function VacationsPage() {
             overflowY: 'auto'
           }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h3 style={{ margin: 0, fontSize: 16 }}>Solicitações de Férias</h3>
-              <button type="button" onClick={() => setShowNotifications(false)} style={btnNav as any}>✕</button>
+              <h3 style={{ margin: 0, fontSize: 16 }}>⚠️ Solicitações de Férias</h3>
+              <button type="button" onClick={() => setShowOverdue(false)} style={btnNav as any}>✕</button>
             </div>
 
             <div style={{ marginTop: 8 }}>
@@ -878,20 +913,20 @@ export default function VacationsPage() {
                       <div
                         key={v.id}
                         onClick={() => {
-                          setShowNotifications(false)
+                          setShowOverdue(false)
                           const d = parseLocalDate(v.startDate.slice(0, 10))
                           setCalMonth(new Date(d.getFullYear(), d.getMonth(), 1))
                           setSelectedDay(d)
                           requestAnimationFrame(() => setPanelOpen(true))
                         }}
-                        onMouseEnter={() => setHoveredNotif(`vac-${v.id}`)}
+                        onMouseEnter={() => setHoveredNotif(`req-${v.id}`)}
                         onMouseLeave={() => setHoveredNotif(null)}
                         role="button"
                         tabIndex={0}
                         style={{
                           padding: 6,
                           borderRadius: 6,
-                          background: hoveredNotif === `vac-${v.id}` ? `${PALETTE.primary}11` : PALETTE.cardBg,
+                          background: hoveredNotif === `req-${v.id}` ? `${PALETTE.primary}11` : PALETTE.cardBg,
                           border: `1px solid ${PALETTE.border}`,
                           display: 'flex',
                           alignItems: 'center',
@@ -912,6 +947,109 @@ export default function VacationsPage() {
                 </div>
               )}
             </div>
+          </div>
+        </div>
+      )}
+      {showNotifications && notifPos && (
+        <div id="vacations-notif-popover" style={{ position: 'absolute', top: notifPos.top, left: notifPos.left, width: 420, zIndex: 2000 }}>
+          <div style={{
+            background: PALETTE.cardBg,
+            border: `1px solid ${PALETTE.border}`,
+            borderRadius: 12,
+            padding: 10,
+            boxShadow: '0 20px 60px rgba(2,6,23,0.18), 0 8px 24px rgba(2,6,23,0.12)',
+            maxHeight: '48vh',
+            overflowY: 'auto'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h3 style={{ margin: 0, fontSize: 16 }}>🔔 Notificações</h3>
+              <button type="button" onClick={() => setShowNotifications(false)} style={btnNav as any}>✕</button>
+            </div>
+
+            {anniversaryAlerts.length > 0 && (
+              <div style={{ marginTop: 10 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: PALETTE.info, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>🎂 Aniversários de Contratação</div>
+                <div style={{ display: 'grid', gap: 8 }}>
+                  {anniversaryAlerts.map(a => (
+                    <div
+                      key={`anniv-${a.id}`}
+                      onMouseEnter={() => setHoveredNotif(`anniv-${a.id}`)}
+                      onMouseLeave={() => setHoveredNotif(null)}
+                      style={{
+                        padding: 6,
+                        borderRadius: 6,
+                        background: hoveredNotif === `anniv-${a.id}` ? `${PALETTE.info}11` : PALETTE.cardBg,
+                        border: `1px solid ${PALETTE.border}`,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 8,
+                        minHeight: 44,
+                      }}
+                    >
+                      <div style={{ width: 12, height: 12, borderRadius: '50%', background: a.color || PALETTE.border }} />
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 13, fontWeight: 700 }}>{a.name}</div>
+                        <div style={{ fontSize: 12, color: PALETTE.textSecondary }}>
+                          {a.days === 0 ? 'Hoje é aniversário de contratação!' : `Faltam ${a.days} dias`}
+                        </div>
+                      </div>
+                      <div style={{ fontSize: 12, color: a.days === 0 ? PALETTE.warning : PALETTE.info }}>
+                        {a.days === 0 ? '🎉 Hoje!' : `${a.days}d`}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {upcomingAll.length > 0 && (
+              <div style={{ marginTop: 10 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: PALETTE.success, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>🏖️ Férias Próximas</div>
+                <div style={{ display: 'grid', gap: 8 }}>
+                  {upcomingAll.map(v => {
+                    const w = workers.find(x => x.id === v.workerId)
+                    return (
+                      <div
+                        key={v.id}
+                        onClick={() => {
+                          setShowNotifications(false)
+                          const d = parseLocalDate(v.startDate.slice(0, 10))
+                          setCalMonth(new Date(d.getFullYear(), d.getMonth(), 1))
+                          setSelectedDay(d)
+                          requestAnimationFrame(() => setPanelOpen(true))
+                        }}
+                        onMouseEnter={() => setHoveredNotif(`up-${v.id}`)}
+                        onMouseLeave={() => setHoveredNotif(null)}
+                        role="button"
+                        tabIndex={0}
+                        style={{
+                          padding: 6,
+                          borderRadius: 6,
+                          background: hoveredNotif === `up-${v.id}` ? `${PALETTE.primary}11` : PALETTE.cardBg,
+                          border: `1px solid ${PALETTE.border}`,
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 8,
+                          minHeight: 44,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        <div style={{ width: 12, height: 12, borderRadius: '50%', background: (v as any).workerColor || w?.color || PALETTE.border }} />
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontSize: 13, fontWeight: 700 }}>{(v as any).workerName || w?.name || '?'}</div>
+                          <div style={{ fontSize: 12, color: PALETTE.textSecondary }}>{fmtDate(v.startDate)} — {fmtDate(v.endDate)} · {v.daysUsed} dias</div>
+                        </div>
+                        <div style={{ fontSize: 12, color: PALETTE.success }}>Próxima</div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+
+            {notifCount === 0 && (
+              <div style={{ marginTop: 8, color: PALETTE.textSecondary }}>Nenhuma notificação.</div>
+            )}
           </div>
         </div>
       )}
@@ -1067,10 +1205,10 @@ export default function VacationsPage() {
                       return (
                         <div
                           key={v.id}
-                          onClick={isAdmin ? (e) => { e.stopPropagation(); startEdit(v) } : undefined}
-                          role={isAdmin ? 'button' : undefined}
-                          tabIndex={isAdmin ? 0 : undefined}
-                          onKeyDown={isAdmin ? (e) => { e.stopPropagation(); if (e.key === 'Enter' || e.key === ' ') startEdit(v) } : undefined}
+                          onClick={canEdit ? (e) => { e.stopPropagation(); startEdit(v) } : undefined}
+                          role={canEdit ? 'button' : undefined}
+                          tabIndex={canEdit ? 0 : undefined}
+                          onKeyDown={canEdit ? (e) => { e.stopPropagation(); if (e.key === 'Enter' || e.key === ' ') startEdit(v) } : undefined}
                           title={w?.name || '?'}
                           style={{
                             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -1078,7 +1216,7 @@ export default function VacationsPage() {
                             background: w?.color ? `${w.color}33` : `${PALETTE.primary}33`,
                             color: PALETTE.textPrimary,
                             whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-                            cursor: isAdmin ? 'pointer' : 'default'
+                            cursor: canEdit ? 'pointer' : 'default'
                           }}
                         >
                           <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', display: 'block', maxWidth: 'calc(100% - 24px)' }}>{w?.name || '?'}</span>
@@ -1162,7 +1300,7 @@ export default function VacationsPage() {
                           {fmtDate(v.startDate)} — {fmtDate(v.endDate)} ({v.daysUsed}d)
                         </div>
                       </div>
-                      {isAdmin && <button onClick={() => startEdit(v)} style={btnSmall}>Editar</button>}
+                      {canEdit && <button onClick={() => startEdit(v)} style={btnSmall}>Editar</button>}
                     </div>
                   ))}
                 </div>
@@ -1345,7 +1483,7 @@ export default function VacationsPage() {
               onChange={e => setFormWorkerId(e.target.value ? Number(e.target.value) : '')}
               required
               style={selectStyle}
-              disabled={!isAdmin && currentUserWorkerId !== null && !editId}
+              disabled={!canEdit && currentUserWorkerId !== null && !editId}
             >
               <option value="">Selecione...</option>
               {workers.filter(w => w.active && !w.dontVacation).map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
@@ -1512,7 +1650,7 @@ export default function VacationsPage() {
                     {v.note && <span style={{ marginLeft: 8, fontStyle: 'italic' }}>({v.note})</span>}
                   </div>
                 </div>
-                {isAdmin && (
+                {canEdit && (
                   <div style={{ display: 'flex', gap: 8 }}>
                     <button onClick={() => startEdit(v)} style={btnSmall}>Editar</button>
                     <button onClick={() => onDelete(v.id)} style={{ ...btnSmallRed }}>Apagar</button>

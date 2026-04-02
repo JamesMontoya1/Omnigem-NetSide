@@ -18,7 +18,7 @@ export class SettingsController {
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ADMIN')
+  @Roles('settings.edit')
   @Put('mealExpense')
   async setMeal(@Body() body: UpdateMealDto) {
     await this.service.set('defaultMealExpense', String(body.value))
@@ -33,7 +33,7 @@ export class SettingsController {
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ADMIN')
+  @Roles('settings.edit')
   @Put('maintenanceInterval')
   async setMaintenanceInterval(@Body() body: UpdateIntervalDto) {
     await this.service.set('defaultMaintenanceIntervalDays', String(body.value))
@@ -47,7 +47,7 @@ export class SettingsController {
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ADMIN')
+  @Roles('settings.edit')
   @Put('alignmentInterval')
   async setAlignmentInterval(@Body() body: UpdateIntervalDto) {
     await this.service.set('defaultAlignmentIntervalDays', String(body.value))

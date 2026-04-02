@@ -31,21 +31,21 @@ export class ServiceTypesController {
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ADMIN')
+  @Roles('trips.edit')
   @Post()
   create(@Body() body: CreateServiceTypeDto) {
     return this.service.create(body)
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ADMIN')
+  @Roles('trips.edit')
   @Put(':id')
   update(@Param('id', ParseIntPipe) id: number, @Body() body: UpdateServiceTypeDto) {
     return this.service.update(id, body)
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ADMIN')
+  @Roles('trips.edit')
   @Delete(':id')
   remove(@Param('id', ParseIntPipe) id: number) {
     return this.service.remove(id)

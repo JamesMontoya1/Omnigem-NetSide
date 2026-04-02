@@ -70,7 +70,7 @@ async function main() {
     vehicleExpenseCategory: ['id', 'name', 'description', 'createdAt'],
     vehicle: ['id', 'plate', 'model', 'odometer', 'nextOilChange', 'lastAlignment', 'odometerAtLastAlignment', 'lastMaintenance', 'notes', 'createdAt'],
     worker: ['id', 'name', 'color', 'active', 'doesShifts', 'doesTravel', 'dontVacation', 'hireDate', 'terminationDate', 'positionId', 'createdAt'],
-    user: ['id', 'email', 'password', 'roles', 'name', 'workerId', 'createdAt'],
+    user: ['id', 'email', 'password', 'name', 'workerId', 'permissionGroupId', 'createdAt'],
     holiday: ['id', 'date', 'name', 'recurring', 'createdAt'],
     recurringPattern: ['id', 'workerId', 'weekdays', 'weekInterval', 'weekOffset', 'startDate', 'endDate', 'note', 'createdAt'],
     assignment: ['id', 'date', 'workerId', 'source', 'note', 'createdAt'],

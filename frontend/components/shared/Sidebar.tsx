@@ -38,13 +38,16 @@ const IconPunch = ({ style }: { style?: React.CSSProperties }) => (
 function Sidebar({ open, onClose, persistent = false, onOpenWorkers, onOpenHolidays }: Props) {
   const router = useRouter()
   const [isAdmin, setIsAdmin] = useState(false)
+  const [permissions, setPermissions] = useState<string[]>([])
 
   useEffect(() => {
     try {
-      const roles = JSON.parse(localStorage.getItem('shifts_roles') || '[]')
-      setIsAdmin(Array.isArray(roles) && roles.includes('ADMIN'))
+      setIsAdmin(localStorage.getItem('shifts_isAdmin') === 'true')
+      const perms = JSON.parse(localStorage.getItem('shifts_permissions') || '[]')
+      setPermissions(Array.isArray(perms) ? perms : [])
     } catch {
       setIsAdmin(false)
+      setPermissions([])
     }
   }, [])
 
@@ -118,6 +121,8 @@ function Sidebar({ open, onClose, persistent = false, onOpenWorkers, onOpenHolid
     return () => clearTimeout(t)
   }, [router])
 
+  const hasPerm = (base: string) => isAdmin || permissions.some(p => p.startsWith(base + '.'))
+
   return (
     <aside aria-hidden={persistent ? false : !open} style={persistent ? persistentStyle : overlayStyle}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -131,37 +136,47 @@ function Sidebar({ open, onClose, persistent = false, onOpenWorkers, onOpenHolid
       <div style={{ height: 1, background: PALETTE.border, margin: '8px 0' }} />
 
       <nav style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 8 }}>
-        <button onMouseEnter={() => router.prefetch('/shifts')} onClick={() => nav('/shifts')} style={{ ...btnSmall, textAlign: 'left', fontSize: 15 }}>
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-            <IconClock style={iconStyle} />
-            Plantões
-          </span>
-        </button>
-        <button onMouseEnter={() => router.prefetch('/vacations')} onClick={() => nav('/vacations')} style={{ ...btnSmall, textAlign: 'left', fontSize: 15 }}>
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-            <IconCalendar style={iconStyle} />
-            Férias
-          </span>
-        </button>
-        <button onMouseEnter={() => router.prefetch('/trips')} onClick={() => nav('/trips')} style={{ ...btnSmall, textAlign: 'left', fontSize: 15 }}>
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-            <IconTrip style={iconStyle} />
-            Viagens
-          </span>
-        </button>
-        <button onMouseEnter={() => router.prefetch('/sped-control')} onClick={() => nav('/sped-control')} style={{ ...btnSmall, textAlign: 'left', fontSize: 15 }}>
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-            <IconSped style={iconStyle} />
-            Controle SPED
-          </span>
-        </button>
-        <button onMouseEnter={() => router.prefetch('/time-punches')} onClick={() => nav('/time-punches')} style={{ ...btnSmall, textAlign: 'left', fontSize: 15 }}>
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-            <IconPunch style={iconStyle} />
-            Registro de Ponto
-          </span>
-        </button>
-        {isAdmin && (
+        {hasPerm('shifts') && (
+          <button onMouseEnter={() => router.prefetch('/shifts')} onClick={() => nav('/shifts')} style={{ ...btnSmall, textAlign: 'left', fontSize: 15 }}>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+              <IconClock style={iconStyle} />
+              Plantões
+            </span>
+          </button>
+        )}
+        {hasPerm('vacations') && (
+          <button onMouseEnter={() => router.prefetch('/vacations')} onClick={() => nav('/vacations')} style={{ ...btnSmall, textAlign: 'left', fontSize: 15 }}>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+              <IconCalendar style={iconStyle} />
+              Férias
+            </span>
+          </button>
+        )}
+        {hasPerm('trips') && (
+          <button onMouseEnter={() => router.prefetch('/trips')} onClick={() => nav('/trips')} style={{ ...btnSmall, textAlign: 'left', fontSize: 15 }}>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+              <IconTrip style={iconStyle} />
+              Viagens
+            </span>
+          </button>
+        )}
+        {hasPerm('sped_control') && (
+          <button onMouseEnter={() => router.prefetch('/sped-control')} onClick={() => nav('/sped-control')} style={{ ...btnSmall, textAlign: 'left', fontSize: 15 }}>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+              <IconSped style={iconStyle} />
+              Controle SPED
+            </span>
+          </button>
+        )}
+        {hasPerm('time_punches') && (
+          <button onMouseEnter={() => router.prefetch('/time-punches')} onClick={() => nav('/time-punches')} style={{ ...btnSmall, textAlign: 'left', fontSize: 15 }}>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+              <IconPunch style={iconStyle} />
+              Registro de Ponto
+            </span>
+          </button>
+        )}
+        {hasPerm('users') && (
           <button onMouseEnter={() => router.prefetch('/users')} onClick={() => nav('/users')} style={{ ...btnSmall, textAlign: 'left', fontSize: 15 }}>
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
               <IconUsers style={iconStyle} />
@@ -173,41 +188,45 @@ function Sidebar({ open, onClose, persistent = false, onOpenWorkers, onOpenHolid
 
       <div style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: 8 }}>
         <div style={{ display: 'inline-flex', flexDirection: 'column', gap: 8 }}>
-          <button
-            type="button"
-            onClick={() => {
-              if (onOpenWorkers) {
-                onOpenWorkers()
-                if (!persistent) onClose()
-              } else {
-                nav('/users')
-              }
-            }}
-            style={{ ...btnSmall, textAlign: 'left', fontSize: 15 }}
-          >
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-              <IconUsers style={iconStyle} />
-              Trabalhadores
-            </span>
-          </button>
+          {hasPerm('workers') && (
+            <button
+              type="button"
+              onClick={() => {
+                if (onOpenWorkers) {
+                  onOpenWorkers()
+                  if (!persistent) onClose()
+                } else {
+                  nav('/users')
+                }
+              }}
+              style={{ ...btnSmall, textAlign: 'left', fontSize: 15 }}
+            >
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                <IconUsers style={iconStyle} />
+                Trabalhadores
+              </span>
+            </button>
+          )}
 
-          <button
-            type="button"
-            onClick={() => {
-              if (onOpenHolidays) {
-                onOpenHolidays()
-                if (!persistent) onClose()
-              } else {
-                nav('/vacations')
-              }
-            }}
-            style={{ ...btnSmall, textAlign: 'left', fontSize: 15 }}
-          >
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-              <IconCalendar style={iconStyle} />
-              Feriados
-            </span>
-          </button>
+          {hasPerm('holidays') && (
+            <button
+              type="button"
+              onClick={() => {
+                if (onOpenHolidays) {
+                  onOpenHolidays()
+                  if (!persistent) onClose()
+                } else {
+                  nav('/vacations')
+                }
+              }}
+              style={{ ...btnSmall, textAlign: 'left', fontSize: 15 }}
+            >
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                <IconCalendar style={iconStyle} />
+                Feriados
+              </span>
+            </button>
+          )}
         </div>
 
         <div style={{ display: 'flex', gap: 8 }}>
@@ -225,7 +244,8 @@ function Sidebar({ open, onClose, persistent = false, onOpenWorkers, onOpenHolid
             onClick={() => {
               try {
                 localStorage.removeItem('shifts_token')
-                localStorage.removeItem('shifts_roles')
+                localStorage.removeItem('shifts_permissions')
+                localStorage.removeItem('shifts_isAdmin')
               } catch (e) {}
               router.push('/login')
               if (!persistent) onClose()

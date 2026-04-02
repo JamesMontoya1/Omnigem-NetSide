@@ -1,23 +1,25 @@
-import React, { useEffect, useState, useCallback } from 'react'
+import React, { useEffect, useState, useCallback, useRef } from 'react'
 import { API_BASE, jsonAuthHeaders } from '../../config/api'
 import {
   PALETTE, btnPrimary, btnCancel, btnDanger, btnSmall, btnSmallBlue, btnSmallRed,
   cardStyle, inputStyle, selectStyle, labelStyle, btnNav,
 } from '../../styles/theme'
 import { useToast } from '../../components/shared/ToastProvider'
+import WorkersContent from '../../components/shared/WorkersContent'
 
 /* ── Tipos ── */
 
-type Worker = { id: number; name: string; active?: boolean }
+type Worker = { id: number; name: string; active?: boolean; pontoSimplesUserId?: number | null }
 
 type TimePunch = {
   id: number
-  workerId: number
-  worker?: Worker
+  workerId: number | null
+  worker?: Worker | null
   occurredAt: string
   type: 'IN' | 'OUT' | 'BREAK_START' | 'BREAK_END'
   source: 'MANUAL' | 'IMPORT_CSV' | 'PONTOSIMPLES'
   externalId?: string | null
+  raw?: any
   createdAt: string
 }
 
@@ -123,12 +125,57 @@ export default function TimePunchesPage() {
   // Expandir dias
   const [collapsedDays, setCollapsedDays] = useState<Record<string, boolean>>({})
 
+  // Vincular ponto pendente
+  const [linkingId, setLinkingId] = useState<number | null>(null)
+  const [linkWorkerId, setLinkWorkerId] = useState('')
+  const [showWorkersModal, setShowWorkersModal] = useState(false)
+
+  // Teste webhook
+  const [showTestModal, setShowTestModal] = useState(false)
+  const [testLoading, setTestLoading] = useState(false)
+  const [testResult, setTestResult] = useState<{ ok: boolean; checks: { name: string; ok: boolean; detail: string }[] } | null>(null)
+
+  // Simular webhook
+  const [showSimModal, setShowSimModal] = useState(false)
+  const [simLoading, setSimLoading] = useState(false)
+  const [simForm, setSimForm] = useState({
+    user_name: '',
+    user_id: '',
+    date: new Date().toISOString().split('T')[0],
+    time: `${String(new Date().getHours()).padStart(2, '0')}:${String(new Date().getMinutes()).padStart(2, '0')}`,
+  })
+  const [simResult, setSimResult] = useState<{ status: string; punchId?: number; workerName?: string; pending?: boolean } | null>(null)
+
+  // Teste GET webhook
+  const [getTestLoading, setGetTestLoading] = useState(false)
+  const [getTestResult, setGetTestResult] = useState<{ ok: boolean; status: number; body: any } | null>(null)
+  const [showGetTestModal, setShowGetTestModal] = useState(false)
+
   const [isAdmin, setIsAdmin] = useState(false)
+  const [canEdit, setCanEdit] = useState(false)
   useEffect(() => {
     try {
-      const roles = JSON.parse(localStorage.getItem('shifts_roles') || '[]')
-      setIsAdmin(Array.isArray(roles) && roles.includes('ADMIN'))
-    } catch { setIsAdmin(false) }
+      const isAdm = localStorage.getItem('shifts_isAdmin') === 'true'
+      const perms: string[] = JSON.parse(localStorage.getItem('shifts_permissions') || '[]')
+      setIsAdmin(isAdm)
+      setCanEdit(isAdm || perms.includes('time_punches.edit'))
+    } catch { setIsAdmin(false); setCanEdit(false) }
+  }, [])
+
+  /* ── Teste GET Webhook ── */
+
+  const testGetWebhook = useCallback(async () => {
+    setGetTestLoading(true)
+    setGetTestResult(null)
+    setShowGetTestModal(true)
+    try {
+      const r = await fetch(`${API_BASE}/pontosimples/webhook`, { method: 'GET' })
+      const body = await r.json().catch(() => null)
+      setGetTestResult({ ok: r.ok, status: r.status, body })
+    } catch (err) {
+      setGetTestResult({ ok: false, status: 0, body: { error: 'Não foi possível conectar ao backend' } })
+    }
+    setGetTestLoading(false)
   }, [])
 
   /* ── Fetch ── */
@@ -155,6 +202,153 @@ export default function TimePunchesPage() {
 
   useEffect(() => { fetchWorkers() }, [fetchWorkers])
   useEffect(() => { fetchPunches() }, [fetchPunches])
+
+  /* ── Polling: detectar novos pontos PontoSimples ── */
+  const lastPunchIdsRef = useRef<Set<number>>(new Set())
+  const [newPunchAlerts, setNewPunchAlerts] = useState<{ id: number; userName: string; time: string; date: string; dismissedAt?: number }[]>([])
+
+  // Inicializar os IDs conhecidos no primeiro load
+  useEffect(() => {
+    if (punches.length > 0 && lastPunchIdsRef.current.size === 0) {
+      lastPunchIdsRef.current = new Set(punches.map(p => p.id))
+    }
+  }, [punches])
+
+  // Polling a cada 15s para detectar novos pontos
+  useEffect(() => {
+    const interval = setInterval(async () => {
+      try {
+        const params = new URLSearchParams()
+        if (filterWorker) params.set('workerId', filterWorker)
+        if (filterFrom) params.set('from', new Date(filterFrom + 'T00:00:00').toISOString())
+        if (filterTo) params.set('to', new Date(filterTo + 'T23:59:59').toISOString())
+        const r = await fetch(`${API_BASE}/time-punches?${params}`, { headers: jsonAuthHeaders() })
+        if (!r.ok) return
+        const fresh: TimePunch[] = await r.json()
+
+        const knownIds = lastPunchIdsRef.current
+        const newPunches = fresh.filter(p => !knownIds.has(p.id) && p.source === 'PONTOSIMPLES')
+
+        if (newPunches.length > 0) {
+          // Atualizar a lista principal
+          setPunches(fresh)
+          // Registrar os novos IDs
+          fresh.forEach(p => knownIds.add(p.id))
+
+          // Criar alertas para cada novo ponto
+          const alerts = newPunches.map(p => ({
+            id: p.id,
+            userName: p.raw?.data?.user_name || p.raw?.data?.user_id || 'Desconhecido',
+            time: toTimeInput(p.occurredAt),
+            date: formatDate(p.occurredAt),
+          }))
+          setNewPunchAlerts(prev => [...alerts, ...prev])
+
+          // Toast para cada novo
+          newPunches.forEach(p => {
+            const name = p.raw?.data?.user_name || p.raw?.data?.user_id || 'Desconhecido'
+            addToast(`Novo ponto PontoSimples: ${name} às ${toTimeInput(p.occurredAt)}`, 'success')
+          })
+        } else if (fresh.length !== punches.length) {
+          // Atualizar mesmo sem novos do PontoSimples (ex: deletou algo)
+          setPunches(fresh)
+          fresh.forEach(p => knownIds.add(p.id))
+        }
+      } catch {}
+    }, 15000)
+    return () => clearInterval(interval)
+  }, [filterWorker, filterFrom, filterTo, addToast])
+
+  const dismissAlert = (id: number) => {
+    setNewPunchAlerts(prev => prev.filter(a => a.id !== id))
+  }
+
+  /* ── Teste Webhook ── */
+
+  const testWebhook = useCallback(async () => {
+    setTestLoading(true)
+    setTestResult(null)
+    setShowTestModal(true)
+    try {
+      const r = await fetch(`${API_BASE}/pontosimples/test`, {
+        method: 'POST',
+        headers: jsonAuthHeaders(),
+        body: JSON.stringify({ verification_key: process.env.NEXT_PUBLIC_PONTOSIMPLES_KEY || '' }),
+      })
+      if (r.ok) {
+        setTestResult(await r.json())
+      } else {
+        setTestResult({ ok: false, checks: [{ name: 'Conexão com backend', ok: false, detail: `Erro HTTP ${r.status}` }] })
+      }
+    } catch {
+      setTestResult({ ok: false, checks: [{ name: 'Conexão com backend', ok: false, detail: 'Não foi possível conectar ao backend' }] })
+    }
+    setTestLoading(false)
+  }, [])
+
+  /* ── Simular Webhook ── */
+
+  const simulateWebhook = async () => {
+    if (!simForm.user_name && !simForm.user_id) {
+      addToast('Informe o nome ou ID do usuário', 'error')
+      return
+    }
+    setSimLoading(true)
+    setSimResult(null)
+    try {
+      const datetime = `${simForm.date}T${simForm.time}:00.000Z`
+      const r = await fetch(`${API_BASE}/pontosimples/webhook`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          status: 'success',
+          verification_key: process.env.NEXT_PUBLIC_PONTOSIMPLES_KEY || '',
+          data: {
+            user_id: simForm.user_id ? Number(simForm.user_id) : undefined,
+            user_name: simForm.user_name || undefined,
+            date: simForm.date,
+            time: simForm.time,
+            source: 'MOBILE',
+            datetime,
+          },
+        }),
+      })
+      const json = await r.json()
+      setSimResult(json)
+      if (json.status === 'received') {
+        addToast('Webhook simulado com sucesso — ponto pendente criado', 'success')
+        fetchPunches()
+      } else {
+        addToast(`Webhook retornou: ${json.status} — ${json.reason || ''}`, 'warning')
+      }
+    } catch {
+      addToast('Erro ao enviar webhook simulado', 'error')
+    }
+    setSimLoading(false)
+  }
+
+  /* ── Vincular ponto pendente ── */
+
+  const linkPunch = async (punchId: number) => {
+    if (!linkWorkerId) {
+      addToast('Selecione um trabalhador', 'error')
+      return
+    }
+    try {
+      const r = await fetch(`${API_BASE}/time-punches/${punchId}/link`, {
+        method: 'PATCH',
+        headers: jsonAuthHeaders(),
+        body: JSON.stringify({ workerId: Number(linkWorkerId) }),
+      })
+      if (!r.ok) throw new Error()
+      addToast('Ponto vinculado com sucesso', 'success')
+      setLinkingId(null)
+      setLinkWorkerId('')
+      fetchPunches()
+    } catch {
+      addToast('Erro ao vincular ponto', 'error')
+    }
+  }
 
   /* ── CRUD ── */
 
@@ -220,9 +414,14 @@ export default function TimePunchesPage() {
     }
   }
 
-  /* ── Agrupar por dia ── */
+  /* ── Separar pontos pendentes e vinculados ── */
 
-  const grouped = punches.reduce<Record<string, TimePunch[]>>((acc, p) => {
+  const pendingPunches = punches.filter(p => p.workerId === null)
+  const linkedPunches = punches.filter(p => p.workerId !== null)
+
+  /* ── Agrupar por dia (apenas vinculados) ── */
+
+  const grouped = linkedPunches.reduce<Record<string, TimePunch[]>>((acc, p) => {
     const day = toDateInput(p.occurredAt)
     if (!acc[day]) acc[day] = []
     acc[day].push(p)
@@ -275,10 +474,13 @@ export default function TimePunchesPage() {
       <div style={{ padding: '16px 24px', paddingLeft: 80, display: 'flex', alignItems: 'center', gap: 16, borderBottom: `1px solid ${PALETTE.border}` }}>
         <h2 style={{ margin: 0, fontSize: 22 }}>Registro de Ponto</h2>
 
-        {isAdmin && (
-          <button onClick={openNew} style={{ ...btnNav, background: PALETTE.success, color: '#fff', border: 'none' }}>
-            + Novo Ponto
-          </button>
+        {canEdit && (
+          <>
+            <button onClick={openNew} style={{ ...btnNav, background: PALETTE.success, color: '#fff', border: 'none' }}>
+              + Novo Ponto
+            </button>
+            <button onClick={() => setShowWorkersModal(true)} style={btnNav}>👷 Trabalhadores</button>
+          </>
         )}
 
         <select
@@ -311,17 +513,58 @@ export default function TimePunchesPage() {
         <div style={{ flex: 1 }} />
 
         {/* Banner PontoSimples */}
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: 6,
-          padding: '4px 12px', borderRadius: 6,
-          background: PALETTE.backgroundSecondary,
-          border: `1px dashed ${PALETTE.border}`,
-        }}>
-          <span style={{ fontSize: 14 }}>🔗</span>
-          <span style={{ color: PALETTE.textSecondary, fontSize: 11 }}>
-            PontoSimples — Em breve
+        <button
+          onClick={testWebhook}
+          title="Clique para testar a conexão"
+          style={{
+            display: 'flex', alignItems: 'center', gap: 6,
+            padding: '4px 12px', borderRadius: 6,
+            background: PALETTE.success + '18',
+            border: `1px solid ${PALETTE.success}44`,
+            cursor: 'pointer',
+          }}
+        >
+          <span style={{ width: 7, height: 7, borderRadius: '50%', background: PALETTE.success, display: 'inline-block' }} />
+          <span style={{ color: PALETTE.success, fontSize: 11, fontWeight: 600 }}>
+            PontoSimples — Testar Conexão
           </span>
-        </div>
+        </button>
+
+        {canEdit && (
+          <button
+            onClick={() => { setSimResult(null); setShowSimModal(true) }}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              padding: '4px 12px', borderRadius: 6,
+              background: PALETTE.warning + '18',
+              border: `1px solid ${PALETTE.warning}44`,
+              cursor: 'pointer',
+            }}
+          >
+            <span style={{ fontSize: 12 }}>🧪</span>
+            <span style={{ color: PALETTE.warning, fontSize: 11, fontWeight: 600 }}>
+              Simular Webhook
+            </span>
+          </button>
+        )}
+
+        {canEdit && (
+          <button
+            onClick={testGetWebhook}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              padding: '4px 12px', borderRadius: 6,
+              background: PALETTE.info + '18',
+              border: `1px solid ${PALETTE.info}44`,
+              cursor: 'pointer',
+            }}
+          >
+            <span style={{ fontSize: 12 }}>🔗</span>
+            <span style={{ color: PALETTE.info, fontSize: 11, fontWeight: 600 }}>
+              GET Webhook
+            </span>
+          </button>
+        )}
 
         {/* Resumo do período */}
         {totalMs > 0 && (
@@ -341,11 +584,160 @@ export default function TimePunchesPage() {
       <div style={{ padding: 24, flex: 1, minHeight: 0, overflowY: 'auto' }}>
         {loading ? (
           <p style={{ color: PALETTE.textSecondary, textAlign: 'center', marginTop: 60 }}>Carregando...</p>
-        ) : sortedDays.length === 0 ? (
-          <p style={{ color: PALETTE.textSecondary, textAlign: 'center', marginTop: 60, fontSize: 15 }}>
-            Nenhum ponto encontrado no período selecionado.
-          </p>
         ) : (
+          <>
+          {/* ── Alertas de novos pontos PontoSimples ── */}
+          {newPunchAlerts.length > 0 && (
+            <div style={{
+              background: '#0D2818',
+              border: `1px solid ${PALETTE.success}55`,
+              borderRadius: 10,
+              marginBottom: 16,
+              overflow: 'hidden',
+              animation: 'fadeIn 0.3s ease',
+            }}>
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: 10,
+                padding: '10px 20px',
+                background: PALETTE.success + '20',
+                borderBottom: `1px solid ${PALETTE.success}33`,
+              }}>
+                <span style={{ fontSize: 16 }}>🔔</span>
+                <span style={{ fontWeight: 700, color: PALETTE.success, fontSize: 14 }}>
+                  Novo(s) ponto(s) recebido(s) do PontoSimples
+                </span>
+                <span style={{ fontSize: 12, color: PALETTE.textSecondary }}>
+                  ({newPunchAlerts.length})
+                </span>
+                <div style={{ flex: 1 }} />
+                <button
+                  onClick={() => setNewPunchAlerts([])}
+                  style={{ background: 'none', border: 'none', color: PALETTE.textSecondary, cursor: 'pointer', fontSize: 12 }}
+                >Limpar todos</button>
+              </div>
+              <div style={{ padding: '10px 20px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {newPunchAlerts.map(a => (
+                  <div key={a.id} style={{
+                    display: 'flex', alignItems: 'center', gap: 12,
+                    padding: '8px 12px', borderRadius: 8,
+                    background: PALETTE.cardBg,
+                    border: `1px solid ${PALETTE.border}`,
+                  }}>
+                    <span style={{ width: 8, height: 8, borderRadius: '50%', background: PALETTE.success, flexShrink: 0, boxShadow: `0 0 6px ${PALETTE.success}` }} />
+                    <span style={{ fontSize: 14, fontWeight: 600, color: PALETTE.textPrimary }}>
+                      {a.userName}
+                    </span>
+                    <span style={{ fontSize: 12, color: PALETTE.textSecondary }}>
+                      {a.date} às {a.time}
+                    </span>
+                    <span style={{
+                      fontSize: 10, padding: '2px 8px', borderRadius: 4,
+                      background: PALETTE.success + '22', color: PALETTE.success, fontWeight: 600,
+                    }}>PENDENTE</span>
+                    <div style={{ flex: 1 }} />
+                    <button
+                      onClick={() => dismissAlert(a.id)}
+                      style={{ background: 'none', border: 'none', color: PALETTE.textSecondary, cursor: 'pointer', fontSize: 14 }}
+                    >✕</button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* ── Pontos Pendentes ── */}
+          {pendingPunches.length > 0 && canEdit && (
+            <div style={{
+              background: PALETTE.warning + '12',
+              border: `1px solid ${PALETTE.warning}44`,
+              borderRadius: 10,
+              marginBottom: 20,
+              overflow: 'hidden',
+            }}>
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: 10,
+                padding: '12px 20px',
+                background: PALETTE.warning + '18',
+                borderBottom: `1px solid ${PALETTE.warning}33`,
+              }}>
+                <span style={{ fontSize: 16 }}>⏳</span>
+                <span style={{ fontWeight: 700, color: PALETTE.warning, fontSize: 15 }}>
+                  Pontos Pendentes — Vincular Trabalhador
+                </span>
+                <span style={{ fontSize: 12, color: PALETTE.textSecondary }}>
+                  ({pendingPunches.length} ponto{pendingPunches.length !== 1 ? 's' : ''})
+                </span>
+              </div>
+              <div style={{ padding: '12px 20px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {[...pendingPunches]
+                  .sort((a, b) => new Date(b.occurredAt).getTime() - new Date(a.occurredAt).getTime())
+                  .map(p => {
+                    const rawName = p.raw?.data?.user_name || p.raw?.data?.user_id || '—'
+                    const isLinking = linkingId === p.id
+                    return (
+                      <div key={p.id} style={{
+                        display: 'flex', alignItems: 'center', gap: 12,
+                        padding: '10px 14px', borderRadius: 8,
+                        background: PALETTE.cardBg,
+                        border: `1px solid ${PALETTE.border}`,
+                      }}>
+                        <span style={{ width: 10, height: 10, borderRadius: '50%', background: PALETTE.warning, flexShrink: 0 }} />
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 140 }}>
+                          <span style={{ fontSize: 14, fontWeight: 600, color: PALETTE.textPrimary }}>
+                            {formatDate(p.occurredAt)} — {toTimeInput(p.occurredAt)}
+                          </span>
+                          <span style={{ fontSize: 11, color: PALETTE.textSecondary }}>
+                            PontoSimples: <b>{rawName}</b>
+                          </span>
+                        </div>
+
+                        {isLinking ? (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1 }}>
+                            <select
+                              style={{ ...selectStyle, flex: 1, fontSize: 13 }}
+                              value={linkWorkerId}
+                              onChange={e => setLinkWorkerId(e.target.value)}
+                              autoFocus
+                            >
+                              <option value="">Selecione o trabalhador...</option>
+                              {workers.filter(w => w.active !== false).map(w => (
+                                <option key={w.id} value={w.id}>{w.name}</option>
+                              ))}
+                            </select>
+                            <button
+                              style={{ ...btnSmall, background: PALETTE.success, color: '#fff', border: 'none', padding: '4px 12px', borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+                              onClick={() => linkPunch(p.id)}
+                            >Vincular</button>
+                            <button
+                              style={{ ...btnSmall, padding: '4px 10px', borderRadius: 6, fontSize: 12, cursor: 'pointer' }}
+                              onClick={() => { setLinkingId(null); setLinkWorkerId('') }}
+                            >Cancelar</button>
+                          </div>
+                        ) : (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 'auto' }}>
+                            <button
+                              style={{ ...btnSmall, background: PALETTE.primary, color: '#fff', border: 'none', padding: '4px 14px', borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+                              onClick={() => { setLinkingId(p.id); setLinkWorkerId('') }}
+                            >Vincular</button>
+                            <button
+                              style={{ ...btnSmall, fontSize: 12, padding: '4px 8px', color: PALETTE.error, cursor: 'pointer' }}
+                              onClick={() => remove(p.id)}
+                              title="Remover"
+                            >✕</button>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+              </div>
+            </div>
+          )}
+
+          {sortedDays.length === 0 && pendingPunches.length === 0 ? (
+            <p style={{ color: PALETTE.textSecondary, textAlign: 'center', marginTop: 60, fontSize: 15 }}>
+              Nenhum ponto encontrado no período selecionado.
+            </p>
+          ) : (
           sortedDays.map(day => {
             const dayPunches = grouped[day]
             const { text: dayHours } = calcHours(dayPunches)
@@ -354,8 +746,8 @@ export default function TimePunchesPage() {
             // Agrupar por trabalhador
             const byWorker: Record<number, TimePunch[]> = {}
             for (const p of dayPunches) {
-              if (!byWorker[p.workerId]) byWorker[p.workerId] = []
-              byWorker[p.workerId].push(p)
+              if (!byWorker[p.workerId!]) byWorker[p.workerId!] = []
+              byWorker[p.workerId!].push(p)
             }
             const workerEntries = Object.entries(byWorker)
 
@@ -469,7 +861,7 @@ export default function TimePunchesPage() {
                                     {SOURCE_LABELS[p.source] || p.source}
                                   </span>
                                 )}
-                                {isAdmin && (
+                                {canEdit && (
                                   <div style={{ marginLeft: 'auto', display: 'flex', gap: 6, alignItems: 'center' }}>
                                     <button
                                       style={{ ...btnSmall, fontSize: 12, padding: '2px 6px' }}
@@ -495,7 +887,22 @@ export default function TimePunchesPage() {
             )
           })
         )}
+        </>
+        )}
       </div>
+
+      {showWorkersModal && (
+        <div style={{ position: 'fixed', inset: 0, background: '#000000aa', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}
+          onClick={e => { if (e.target === e.currentTarget) { setShowWorkersModal(false); fetchWorkers(); fetchPunches() } }}>
+          <div style={{ width: 600, maxWidth: '95%', maxHeight: '90vh', overflow: 'auto', background: PALETTE.cardBg, borderRadius: 10, padding: 24, boxShadow: '0 8px 40px rgba(0,0,0,0.4)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+              <h2 style={{ margin: 0, fontSize: 18, color: PALETTE.textPrimary }}>Trabalhadores</h2>
+              <button onClick={() => { setShowWorkersModal(false); fetchWorkers(); fetchPunches() }} style={btnSmall}>✕ Fechar</button>
+            </div>
+            <WorkersContent showTitle={false} onChange={() => { fetchWorkers(); fetchPunches(); }} />
+          </div>
+        </div>
+      )}
 
       {/* ── Modal criar/editar ── */}
       {showModal && (
@@ -558,6 +965,194 @@ export default function TimePunchesPage() {
             <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
               <button style={btnCancel} onClick={() => setShowModal(false)}>Cancelar</button>
               <button style={{ ...btnPrimary, padding: '8px 20px' }} onClick={save}>Salvar</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* ── Modal simular webhook ── */}
+      {showSimModal && (
+        <div style={overlay} onClick={e => { if (e.target === e.currentTarget) setShowSimModal(false) }}>
+          <div style={{ ...modalStyle, width: 480 }} onClick={e => e.stopPropagation()}>
+            <h3 style={{ color: PALETTE.textPrimary, margin: '0 0 16px', fontSize: 18 }}>
+              🧪 Simular Webhook PontoSimples
+            </h3>
+
+            <div style={{ marginBottom: 14 }}>
+              <label style={labelStyle}>Nome do usuário (user_name)</label>
+              <input
+                style={inputStyle}
+                placeholder="Ex: Marcelo"
+                value={simForm.user_name}
+                onChange={e => setSimForm(f => ({ ...f, user_name: e.target.value }))}
+              />
+            </div>
+
+            <div style={{ marginBottom: 14 }}>
+              <label style={labelStyle}>ID do usuário (user_id) — opcional</label>
+              <input
+                style={inputStyle}
+                type="number"
+                placeholder="Ex: 22375"
+                value={simForm.user_id}
+                onChange={e => setSimForm(f => ({ ...f, user_id: e.target.value }))}
+              />
+            </div>
+
+            <div style={{ display: 'flex', gap: 12, marginBottom: 14 }}>
+              <div style={{ flex: 1 }}>
+                <label style={labelStyle}>Data</label>
+                <input
+                  type="date"
+                  style={inputStyle}
+                  value={simForm.date}
+                  onChange={e => setSimForm(f => ({ ...f, date: e.target.value }))}
+                />
+              </div>
+              <div style={{ flex: 1 }}>
+                <label style={labelStyle}>Hora</label>
+                <input
+                  type="time"
+                  style={inputStyle}
+                  value={simForm.time}
+                  onChange={e => setSimForm(f => ({ ...f, time: e.target.value }))}
+                />
+              </div>
+            </div>
+
+            {simResult && (
+              <div style={{
+                padding: '10px 14px', borderRadius: 8, marginBottom: 14,
+                background: simResult.status === 'received' ? PALETTE.success + '18' : PALETTE.warning + '18',
+                border: `1px solid ${simResult.status === 'received' ? PALETTE.success : PALETTE.warning}44`,
+              }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: simResult.status === 'received' ? PALETTE.success : PALETTE.warning }}>
+                  {simResult.status === 'received'
+                    ? `✅ Ponto #${simResult.punchId} criado (pendente)`
+                    : `⚠️ ${simResult.status}`}
+                </div>
+                {simResult.pending && (
+                  <div style={{ fontSize: 12, color: PALETTE.textSecondary, marginTop: 4 }}>
+                    Ponto criado sem vínculo — vincule na seção "Pontos Pendentes"
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+              <button style={btnCancel} onClick={() => setShowSimModal(false)}>Fechar</button>
+              <button
+                style={{ ...btnPrimary, padding: '8px 20px' }}
+                onClick={simulateWebhook}
+                disabled={simLoading}
+              >
+                {simLoading ? 'Enviando...' : 'Enviar Webhook'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Modal teste webhook ── */}
+      {showTestModal && (
+        <div style={overlay} onClick={e => { if (e.target === e.currentTarget) setShowTestModal(false) }}>
+          <div style={{ ...modalStyle, width: 520 }} onClick={e => e.stopPropagation()}>
+            <h3 style={{ color: PALETTE.textPrimary, margin: '0 0 16px', fontSize: 18 }}>
+              Teste de Conexão — PontoSimples
+            </h3>
+
+            {testLoading ? (
+              <p style={{ color: PALETTE.textSecondary, textAlign: 'center', padding: '24px 0' }}>Testando conexão...</p>
+            ) : testResult ? (
+              <div>
+                {/* Resultado geral */}
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: 10,
+                  padding: '12px 16px', borderRadius: 8, marginBottom: 16,
+                  background: testResult.ok ? PALETTE.success + '18' : PALETTE.error + '18',
+                  border: `1px solid ${testResult.ok ? PALETTE.success : PALETTE.error}44`,
+                }}>
+                  <span style={{ fontSize: 20 }}>{testResult.ok ? '✅' : '⚠️'}</span>
+                  <span style={{ fontSize: 14, fontWeight: 600, color: testResult.ok ? PALETTE.success : PALETTE.error }}>
+                    {testResult.ok ? 'Webhook configurado corretamente!' : 'Há itens que precisam de atenção'}
+                  </span>
+                </div>
+
+                {/* Checks individuais */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {testResult.checks.map((check, i) => (
+                    <div key={i} style={{
+                      display: 'flex', alignItems: 'flex-start', gap: 10,
+                      padding: '10px 14px', borderRadius: 6,
+                      background: PALETTE.cardBg,
+                      border: `1px solid ${PALETTE.border}`,
+                    }}>
+                      <span style={{ fontSize: 16, flexShrink: 0, marginTop: 1 }}>
+                        {check.ok ? '✅' : '❌'}
+                      </span>
+                      <div>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: PALETTE.textPrimary }}>
+                          {check.name}
+                        </div>
+                        <div style={{ fontSize: 12, color: PALETTE.textSecondary, marginTop: 2 }}>
+                          {check.detail}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 20 }}>
+              <button style={btnCancel} onClick={() => setShowTestModal(false)}>Fechar</button>
+              <button style={{ ...btnPrimary, padding: '8px 20px' }} onClick={testWebhook} disabled={testLoading}>
+                {testLoading ? 'Testando...' : 'Testar Novamente'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Modal GET Webhook ── */}
+      {showGetTestModal && (
+        <div style={overlay} onClick={e => { if (e.target === e.currentTarget) setShowGetTestModal(false) }}>
+          <div style={{ ...modalStyle, width: 480 }} onClick={e => e.stopPropagation()}>
+            <h3 style={{ color: PALETTE.textPrimary, margin: '0 0 16px', fontSize: 18 }}>
+              GET /pontosimples/webhook
+            </h3>
+
+            {getTestLoading ? (
+              <p style={{ color: PALETTE.textSecondary, textAlign: 'center', padding: '24px 0' }}>Enviando GET...</p>
+            ) : getTestResult ? (
+              <div>
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: 10,
+                  padding: '12px 16px', borderRadius: 8, marginBottom: 16,
+                  background: getTestResult.ok ? PALETTE.success + '18' : PALETTE.error + '18',
+                  border: `1px solid ${getTestResult.ok ? PALETTE.success : PALETTE.error}44`,
+                }}>
+                  <span style={{ fontSize: 20 }}>{getTestResult.ok ? '✅' : '❌'}</span>
+                  <span style={{ fontSize: 14, fontWeight: 600, color: getTestResult.ok ? PALETTE.success : PALETTE.error }}>
+                    HTTP {getTestResult.status} — {getTestResult.ok ? 'Endpoint acessível' : 'Endpoint inacessível'}
+                  </span>
+                </div>
+
+                <div style={{
+                  padding: '12px 14px', borderRadius: 6,
+                  background: '#0D1117', border: `1px solid ${PALETTE.border}`,
+                  fontFamily: 'monospace', fontSize: 12, color: PALETTE.textSecondary,
+                  whiteSpace: 'pre-wrap', wordBreak: 'break-all',
+                }}>
+                  {JSON.stringify(getTestResult.body, null, 2)}
+                </div>
+              </div>
+            ) : null}
+
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 20 }}>
+              <button style={btnCancel} onClick={() => setShowGetTestModal(false)}>Fechar</button>
+              <button style={{ ...btnPrimary, padding: '8px 20px' }} onClick={testGetWebhook} disabled={getTestLoading}>
+                {getTestLoading ? 'Testando...' : 'Testar Novamente'}
+              </button>
             </div>
           </div>
         </div>

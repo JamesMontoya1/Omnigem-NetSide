@@ -20,8 +20,19 @@ export class AuthService {
   async login(email: string, password: string) {
     const user = await this.validateUser(email, password);
     if (!user) throw new UnauthorizedException('Invalid credentials');
-    const payload = { sub: user.id, email: user.email, roles: user.roles };
+
+    const full = await this.usersService.findById(user.id);
+    const group = (full as any)?.permissionGroup;
+    const isAdmin = group?.isAdmin ?? false;
+    const permissions = (group?.permissions ?? []).map((p: any) => p.key);
+
+    const payload = { sub: user.id, email: user.email, isAdmin, permissions };
     const token = jwt.sign(payload, JWT_SECRET, { expiresIn: '8h' });
-    return { accessToken: token, roles: user.roles };
+    return {
+      accessToken: token,
+      isAdmin,
+      permissions,
+      permissionGroup: group?.name ?? null,
+    };
   }
 }

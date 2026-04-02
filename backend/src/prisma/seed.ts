@@ -36,10 +36,25 @@ async function main() {
   const adminPassword = process.env.ADMIN_PASSWORD || 'admin123';
 
   const hashed = await bcrypt.hash(adminPassword, 10);
+
+  // Ensure admin permission group exists
+  let adminGroup = await prisma.permissionGroup.findFirst({ where: { isAdmin: true } });
+  if (!adminGroup) {
+    adminGroup = await prisma.permissionGroup.create({
+      data: { name: 'Administrador', description: 'Acesso total ao sistema', isAdmin: true },
+    });
+  }
+  let guestGroup = await prisma.permissionGroup.findUnique({ where: { name: 'Visitante' } });
+  if (!guestGroup) {
+    guestGroup = await prisma.permissionGroup.create({
+      data: { name: 'Visitante', description: 'Acesso limitado', isAdmin: false },
+    });
+  }
+
   await prisma.user.upsert({
     where: { email: adminEmail },
-    update: { password: hashed, roles: ['ADMIN'] },
-    create: { email: adminEmail, password: hashed, roles: ['ADMIN'], name: 'Administrator' },
+    update: { password: hashed, permissionGroupId: adminGroup.id },
+    create: { email: adminEmail, password: hashed, name: 'Administrator', permissionGroupId: adminGroup.id },
   });
   console.log(`Seeded admin: ${adminEmail}`);
 
@@ -122,7 +137,7 @@ async function main() {
     const email = `${w.name.split(' ').join('.').toLowerCase()}@example.com`;
     const pwd = await bcrypt.hash('password123', 10);
     try {
-      await prisma.user.create({ data: { email, password: pwd, roles: ['GUEST'], name: w.name, worker: { connect: { id: w.id } } } });
+      await prisma.user.create({ data: { email, password: pwd, name: w.name, permissionGroup: { connect: { id: guestGroup.id } }, worker: { connect: { id: w.id } } } });
     } catch (e) {
       // ignore (unique/email etc.)
     }

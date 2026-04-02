@@ -29,21 +29,21 @@ export class PositionsController {
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ADMIN')
+  @Roles('workers.edit')
   @Post()
   create(@Body() body: CreatePositionDto) {
     return this.service.create(body)
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ADMIN')
+  @Roles('workers.edit')
   @Put(':id')
   update(@Param('id', ParseIntPipe) id: number, @Body() body: UpdatePositionDto) {
     return this.service.update(id, body)
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ADMIN')
+  @Roles('workers.edit')
   @Delete(':id')
   remove(@Param('id', ParseIntPipe) id: number) {
     return this.service.remove(id)

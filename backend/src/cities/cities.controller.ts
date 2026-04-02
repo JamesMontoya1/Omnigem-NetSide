@@ -31,21 +31,21 @@ export class CitiesController {
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ADMIN')
+  @Roles('trips.edit')
   @Post()
   create(@Body() body: CreateCityDto) {
     return this.service.create(body)
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ADMIN')
+  @Roles('trips.edit')
   @Put(':id')
   update(@Param('id', ParseIntPipe) id: number, @Body() body: UpdateCityDto) {
     return this.service.update(id, body)
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ADMIN')
+  @Roles('trips.edit')
   @Delete(':id')
   remove(@Param('id', ParseIntPipe) id: number) {
     return this.service.remove(id)

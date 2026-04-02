@@ -16,7 +16,7 @@ import { Roles } from '../auth/roles.decorator';
 
 @Controller('users')
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles('ADMIN')
+@Roles('users.view')
 export class UsersController {
   constructor(private usersService: UsersService) {}
 
@@ -31,22 +31,25 @@ export class UsersController {
   }
 
   @Post()
+  @Roles('users.edit')
   create(
     @Body()
-    body: { email: string; password: string; roles: string[]; name?: string; workerId?: number | null },
+    body: { email: string; password: string; name?: string; workerId?: number | null; permissionGroupId?: number | null },
   ) {
-    return this.usersService.create(body.email, body.password, body.roles, body.name, body.workerId ?? null);
+    return this.usersService.create(body.email, body.password, body.name, body.workerId ?? null, body.permissionGroupId ?? null);
   }
 
   @Put(':id')
+  @Roles('users.edit')
   update(
     @Param('id', ParseIntPipe) id: number,
-    @Body() body: { email?: string; password?: string; roles?: string[]; name?: string; workerId?: number | null },
+    @Body() body: { email?: string; password?: string; name?: string; workerId?: number | null; permissionGroupId?: number | null },
   ) {
     return this.usersService.update(id, body);
   }
 
   @Delete(':id')
+  @Roles('users.edit')
   remove(@Param('id', ParseIntPipe) id: number) {
     return this.usersService.remove(id);
   }

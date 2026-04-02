@@ -63,6 +63,38 @@ export class TimePunchesService {
     return this.prisma.timePunch.delete({ where: { id } });
   }
 
+  /** Vincula um ponto pendente a um worker e (opcionalmente) ajusta o tipo. */
+  async linkWorker(id: number, workerId: number, type?: TimePunchType) {
+    const punch = await this.prisma.timePunch.findUnique({ where: { id } });
+    if (!punch) throw new BadRequestException('Ponto não encontrado');
+
+    const finalType = type || await this.inferPunchType(workerId, punch.occurredAt);
+
+    return this.prisma.timePunch.update({
+      where: { id },
+      data: { workerId, type: finalType },
+      include: { worker: true },
+    });
+  }
+
+  /** Infere o tipo do ponto baseado na sequência do dia. */
+  private async inferPunchType(workerId: number, occurredAt: Date): Promise<TimePunchType> {
+    const dayStart = new Date(occurredAt);
+    dayStart.setHours(0, 0, 0, 0);
+    const dayEnd = new Date(occurredAt);
+    dayEnd.setHours(23, 59, 59, 999);
+
+    const count = await this.prisma.timePunch.count({
+      where: { workerId, occurredAt: { gte: dayStart, lte: dayEnd } },
+    });
+
+    if (count === 0) return 'IN';
+    if (count === 1) return 'BREAK_START';
+    if (count === 2) return 'BREAK_END';
+    if (count === 3) return 'OUT';
+    return count % 2 === 0 ? 'IN' : 'OUT';
+  }
+
   async importMany(params: { source: TimePunchSource; punches: ImportPunchInput[] }) {
     if (!params.punches?.length) {
       throw new BadRequestException('Nenhuma batida enviada');

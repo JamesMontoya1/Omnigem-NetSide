@@ -976,11 +976,13 @@ export default function Trips() {
 
   useEffect(() => {
     try {
-      const roles = JSON.parse(localStorage.getItem('shifts_roles') || '[]')
-      const hasControl = Array.isArray(roles) && (roles.includes('ADMIN') || roles.includes('Controla viagem') || roles.includes('adm/controla viagens') || roles.includes('adm'))
-      setCanViewBoth(hasControl)
-      setCanEdit(hasControl)
-      if (!hasControl) {
+      const isAdm = localStorage.getItem('shifts_isAdmin') === 'true'
+      const perms: string[] = JSON.parse(localStorage.getItem('shifts_permissions') || '[]')
+      const hasView = isAdm || perms.some(p => p.startsWith('trips.'))
+      const hasEdit = isAdm || perms.includes('trips.edit')
+      setCanViewBoth(hasView)
+      setCanEdit(hasEdit)
+      if (!hasView) {
         setListViewMode('pending')
       }
     } catch {

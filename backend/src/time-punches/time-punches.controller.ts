@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, ParseIntPipe, Post, Put, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post, Put, Query, UseGuards } from '@nestjs/common';
 import { TimePunchSource, TimePunchType } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
@@ -48,28 +48,39 @@ export class TimePunchesController {
 
   @Post()
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ADMIN')
+  @Roles('time_punches.edit')
   create(@Body() body: CreateTimePunchDto) {
     return this.svc.create(body);
   }
 
   @Put(':id')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ADMIN')
+  @Roles('time_punches.edit')
   update(@Param('id', ParseIntPipe) id: number, @Body() body: UpdateTimePunchDto) {
     return this.svc.update(id, body);
   }
 
   @Delete(':id')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ADMIN')
+  @Roles('time_punches.edit')
   remove(@Param('id', ParseIntPipe) id: number) {
     return this.svc.remove(id);
   }
 
+  /** Vincula um ponto pendente (sem worker) a um trabalhador. */
+  @Patch(':id/link')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('time_punches.edit')
+  linkWorker(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: { workerId: number; type?: TimePunchType },
+  ) {
+    return this.svc.linkWorker(id, body.workerId, body.type);
+  }
+
   @Post('import')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ADMIN')
+  @Roles('time_punches.edit')
   importMany(@Body() body: ImportTimePunchesBodyDto) {
     return this.svc.importMany(body);
   }
@@ -77,7 +88,7 @@ export class TimePunchesController {
   /** Sincroniza batidas do provider externo (PontoSimples quando disponível). */
   @Post('sync')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ADMIN')
+  @Roles('time_punches.edit')
   sync(
     @Query('workerId') workerId?: string,
     @Query('from') from?: string,

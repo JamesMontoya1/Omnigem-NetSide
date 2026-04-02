@@ -73,14 +73,14 @@ export class RotationsController {
 
   @Post()
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ADMIN')
+  @Roles('shifts.edit')
   create(@Body() body: CreateRotationDto) {
     return this.svc.create(body);
   }
 
   @Put(':id')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ADMIN')
+  @Roles('shifts.edit')
   update(
     @Param('id', ParseIntPipe) id: number,
     @Body() body: UpdateRotationDto,
@@ -90,7 +90,7 @@ export class RotationsController {
 
   @Delete(':id')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ADMIN')
+  @Roles('shifts.edit')
   remove(@Param('id', ParseIntPipe) id: number) {
     return this.svc.remove(id);
   }

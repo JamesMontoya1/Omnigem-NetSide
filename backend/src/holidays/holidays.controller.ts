@@ -32,21 +32,21 @@ export class HolidaysController {
 
   @Post()
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ADMIN')
+  @Roles('holidays.edit')
   create(@Body() body: CreateHolidayDto) {
     return this.svc.create(body);
   }
 
   @Put(':id')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ADMIN')
+  @Roles('holidays.edit')
   update(@Param('id', ParseIntPipe) id: number, @Body() body: UpdateHolidayDto) {
     return this.svc.update(id, body);
   }
 
   @Delete(':id')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ADMIN')
+  @Roles('holidays.edit')
   remove(@Param('id', ParseIntPipe) id: number) {
     return this.svc.remove(id);
   }
